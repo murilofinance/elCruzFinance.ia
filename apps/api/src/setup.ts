@@ -5,6 +5,8 @@ export function setupApp(app: INestApplication): void {
   app.enableCors({
     origin: true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
   });
   app.useGlobalPipes(
     new ValidationPipe({

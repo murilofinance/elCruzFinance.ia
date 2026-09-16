@@ -31,7 +31,7 @@ export function HomePage() {
   const reload = useCallback(async () => {
     const [nextSafe, nextAccounts, nextCards, nextDebts, nextTx] =
       await Promise.all([
-        apiFetch<SafeToSpend>('/insights/safe-to-spend'),
+        apiFetch<SafeToSpend>('/safe-to-spend'),
         apiFetch<Account[]>('/accounts'),
         apiFetch<CreditCard[]>('/cards'),
         apiFetch<Debt[]>('/debts'),

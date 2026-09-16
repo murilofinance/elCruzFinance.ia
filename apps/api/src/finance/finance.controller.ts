@@ -64,7 +64,7 @@ export class FinanceController {
     return this.finance.createTransaction(user.uid, body);
   }
 
-  @Get('insights/safe-to-spend')
+  @Get('safe-to-spend')
   safeToSpend(@CurrentUser() user: DecodedIdToken) {
     return this.finance.safeToSpend(user.uid);
   }

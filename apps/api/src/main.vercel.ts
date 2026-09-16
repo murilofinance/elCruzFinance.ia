@@ -32,12 +32,23 @@ async function ensureApp() {
 }
 
 function withApiPrefix(req: Request): void {
-  const current = req.url ?? '/';
+  const forwarded = req.headers['x-forwarded-uri'];
+  const invokePath = req.headers['x-invoke-path'];
+  const fromHeader =
+    (typeof forwarded === 'string' && forwarded) ||
+    (typeof invokePath === 'string' && invokePath) ||
+    null;
+  const current = fromHeader ?? req.url ?? '/';
   const path = current.split('?')[0] ?? '/';
+  const query = current.includes('?')
+    ? current.slice(current.indexOf('?'))
+    : (req.url ?? '').includes('?')
+      ? (req.url ?? '').slice((req.url ?? '').indexOf('?'))
+      : '';
   if (path === '/api' || path.startsWith('/api/')) {
+    req.url = `${path}${query}`;
     return;
   }
-  const query = current.includes('?') ? current.slice(current.indexOf('?')) : '';
   const prefixed =
     path === '/' ? '/api' : `/api${path.startsWith('/') ? path : `/${path}`}`;
   req.url = `${prefixed}${query}`;
