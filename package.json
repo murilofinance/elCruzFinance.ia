@@ -10,7 +10,8 @@
     "dev:web": "npm run dev --workspace=web",
     "build": "npm run build --workspace=api && npm run build --workspace=web",
     "build:api": "npm run build --workspace=api",
-    "build:web": "npm run build --workspace=web"
+    "vercel:install": "node scripts/vercel.mjs install",
+    "vercel:build": "node scripts/vercel.mjs build",
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.13",
