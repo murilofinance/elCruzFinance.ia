@@ -9,9 +9,10 @@ Rules here override `MASTER.md`.
 
 ## Layout
 
-- Full-viewport brand image (`/brand/login-hero.jpg`) as the immersive layer.
-- Desktop (`lg+`): image occupies the left; glass form on the right (max 420px).
-- Mobile: same image as background with a **55–65% black scrim** so the form meets 4.5:1 contrast. Do not rely on the photo text for the heading.
+- Full-viewport brand image (`/brand/login-hero.jpg`), cropped **to the left** (`object-[12%_center]`) so mansion/cars stay in frame.
+- Desktop: glass form aligned **left** (`~6vw`), not pinned to the right edge. Leave the right side of the photo open.
+- Footer credit under the form: “Desenvolvido por Murilo Cruz Leite Machado” + © 2026. Contrast ≥4.5:1 (`#c5ddd2` on near-black).
+- Mobile: stacked form + footer; 55% scrim. Labels stay on inputs (never placeholder-only).
 - Skip “product tour” / glitch / scanline gimmicks on this page — impatient users need the form immediately.
 
 ## Color
