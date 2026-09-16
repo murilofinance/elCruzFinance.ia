@@ -88,6 +88,7 @@ export type LedgerTransaction = {
   description: string;
   accountId?: string | null;
   cardId?: string | null;
+  debtId?: string | null;
   source?: 'manual' | 'open_finance' | 'ocr' | 'import';
 };
 

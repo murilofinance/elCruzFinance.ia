@@ -121,6 +121,16 @@ export class CreateDebtDto {
   dueDay!: number;
 }
 
+export class AllocatePaymentDto {
+  @IsOptional()
+  @IsString()
+  cardId?: string;
+
+  @IsOptional()
+  @IsString()
+  debtId?: string;
+}
+
 export class CreateTransactionDto {
   @IsIn(['income', 'expense', 'transfer', 'card_payment', 'debt_payment'])
   type!: 'income' | 'expense' | 'transfer' | 'card_payment' | 'debt_payment';

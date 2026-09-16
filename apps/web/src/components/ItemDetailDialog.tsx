@@ -8,6 +8,7 @@ import {
   type Investment,
   type LedgerTransaction,
 } from '../lib/api';
+import { canAllocatePayment } from '../lib/labels';
 
 export type DetailTarget =
   | { type: 'account'; id: string }
@@ -31,6 +32,8 @@ export function ItemDetailDialog({
   investments,
   transactions,
   onClose,
+  onPay,
+  onAllocate,
 }: {
   target: DetailTarget | null;
   accounts: Account[];
@@ -39,6 +42,8 @@ export function ItemDetailDialog({
   investments: Investment[];
   transactions: LedgerTransaction[];
   onClose: () => void;
+  onPay?: (target: { type: 'card' | 'debt'; id: string }) => void;
+  onAllocate?: (tx: LedgerTransaction) => void;
 }) {
   useEffect(() => {
     if (!target) {
@@ -130,9 +135,30 @@ export function ItemDetailDialog({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-5">
-          {card ? <CardDetail card={card} transactions={transactions} /> : null}
-          {account ? <AccountDetail account={account} transactions={transactions} /> : null}
-          {debt ? <DebtDetail debt={debt} /> : null}
+          {card ? (
+            <CardDetail
+              card={card}
+              transactions={transactions}
+              onPay={
+                onPay && card.origin !== 'open_finance'
+                  ? () => onPay({ type: 'card', id: card.id })
+                  : undefined
+              }
+            />
+          ) : null}
+          {account ? (
+            <AccountDetail
+              account={account}
+              transactions={transactions}
+              onAllocate={onAllocate}
+            />
+          ) : null}
+          {debt ? (
+            <DebtDetail
+              debt={debt}
+              onPay={onPay ? () => onPay({ type: 'debt', id: debt.id }) : undefined}
+            />
+          ) : null}
           {investment ? <InvestmentDetail investment={investment} /> : null}
         </div>
       </div>
@@ -143,27 +169,42 @@ export function ItemDetailDialog({
 function CardDetail({
   card,
   transactions,
+  onPay,
 }: {
   card: CreditCard;
   transactions: LedgerTransaction[];
+  onPay?: () => void;
 }) {
   const invoices = [...(card.invoices ?? [])].sort((a, b) => b.month.localeCompare(a.month));
   const related = transactions.filter((item) => item.cardId === card.id).slice(0, 12);
+  const manual = card.origin !== 'open_finance';
   return (
     <div className="grid gap-5">
       <Money
         value={
-          invoices[0]?.amount ?? card.currentInvoice
+          invoices.find((row) => row.amount > 0.009)?.amount ?? card.currentInvoice
         }
         tone="negative"
       />
       <p className="text-sm leading-6 text-muted-fg">
         Fecha dia {card.closingDay} · vence dia {card.dueDay}
         {card.creditLimit > 0 ? ` · limite ${formatBRL(card.creditLimit)}` : ''}
+        {manual ? ' · manual' : ' · Open Finance'}
       </p>
+      {manual && onPay ? (
+        <button
+          type="button"
+          onClick={onPay}
+          className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-md bg-primary text-sm text-on-primary transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Pagar com Pix do extrato
+        </button>
+      ) : null}
       <Section title="Faturas">
-        {invoices.length > 0 ? (
-          invoices.map((row) => (
+        {invoices.filter((row) => row.amount > 0.009).length > 0 ? (
+          invoices
+            .filter((row) => row.amount > 0.009)
+            .map((row) => (
             <Row key={row.month} label={formatMonth(row.month)} amount={row.amount} tone="negative" />
           ))
         ) : (
@@ -191,9 +232,11 @@ function CardDetail({
 function AccountDetail({
   account,
   transactions,
+  onAllocate,
 }: {
   account: Account;
   transactions: LedgerTransaction[];
+  onAllocate?: (tx: LedgerTransaction) => void;
 }) {
   const related = transactions.filter((item) => item.accountId === account.id).slice(0, 12);
   return (
@@ -208,16 +251,20 @@ function AccountDetail({
       </p>
       <Section title="Lançamentos">
         {related.length > 0 ? (
-          related.map((item) => (
-            <Row
-              key={item.id}
-              label={item.description}
-              amount={item.amount}
-              tone={item.type === 'income' ? 'positive' : 'negative'}
-              signed
-              income={item.type === 'income'}
-            />
-          ))
+          related.map((item) => {
+            const allocable = Boolean(onAllocate) && canAllocatePayment(item);
+            return (
+              <Row
+                key={item.id}
+                label={item.description}
+                amount={item.amount}
+                tone={item.type === 'income' ? 'positive' : 'negative'}
+                signed
+                income={item.type === 'income'}
+                onClick={allocable ? () => onAllocate?.(item) : undefined}
+              />
+            );
+          })
         ) : (
           <p className="text-sm text-muted-fg">Nenhum lançamento nesta conta ainda.</p>
         )}
@@ -226,7 +273,7 @@ function AccountDetail({
   );
 }
 
-function DebtDetail({ debt }: { debt: Debt }) {
+function DebtDetail({ debt, onPay }: { debt: Debt; onPay?: () => void }) {
   const count = Math.max(
     1,
     debt.installmentCount ??
@@ -249,6 +296,15 @@ function DebtDetail({ debt }: { debt: Debt }) {
         {bill ? 'Boleto parcelado' : 'Empréstimo'} · {count}x de{' '}
         {formatBRL(debt.installmentAmount)} · vence todo dia {debt.dueDay}
       </p>
+      {onPay ? (
+        <button
+          type="button"
+          onClick={onPay}
+          className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-md bg-primary text-sm text-on-primary transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Pagar com Pix do extrato
+        </button>
+      ) : null}
       <Section title="Parcelas">
         {schedule.map((iso, index) => (
           <Row
@@ -297,12 +353,14 @@ function Row({
   tone,
   signed,
   income,
+  onClick,
 }: {
   label: string;
   amount: number;
   tone: 'positive' | 'negative' | 'neutral';
   signed?: boolean;
   income?: boolean;
+  onClick?: () => void;
 }) {
   const color =
     tone === 'positive'
@@ -310,13 +368,31 @@ function Row({
       : tone === 'negative'
         ? 'text-destructive'
         : 'text-foreground';
-  return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-3 text-sm">
+  const inner = (
+    <>
       <span className="min-w-0 break-words leading-5 text-foreground">{label}</span>
       <span className={`shrink-0 whitespace-nowrap tabular-nums ${color}`}>
         {signed ? (income ? '+' : '−') : null}
         {formatBRL(amount)}
       </span>
+    </>
+  );
+  if (onClick) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={onClick}
+          className="grid min-h-11 w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-3 text-left text-sm transition-colors duration-200 hover:text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {inner}
+        </button>
+      </li>
+    );
+  }
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-3 text-sm">
+      {inner}
     </li>
   );
 }

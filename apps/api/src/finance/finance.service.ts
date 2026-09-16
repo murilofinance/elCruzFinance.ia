@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import {
+  AllocatePaymentDto,
   CreateAccountDto,
   CreateCardDto,
   CreateDebtDto,
@@ -526,13 +527,17 @@ export class FinanceService {
       await this.col(uid, 'transactions').doc().set(payload);
       return true;
     }
+    const previous = existing.docs[0].data() as Omit<LedgerTransaction, 'id'>;
+    const allocated =
+      previous.type === 'card_payment' || previous.type === 'debt_payment';
     await existing.docs[0].ref.update({
-      type: payload.type,
       amount: payload.amount,
       date: payload.date,
-      description: payload.description,
+      description: allocated ? previous.description : payload.description,
       accountId: payload.accountId,
-      cardId: payload.cardId,
+      cardId: allocated ? previous.cardId : payload.cardId,
+      debtId: allocated ? previous.debtId : payload.debtId,
+      type: allocated ? previous.type : payload.type,
       source: 'open_finance',
       status: 'confirmed',
       updatedAt: now,
@@ -580,13 +585,19 @@ export class FinanceService {
       if (!accountId || !cardId) {
         throw new BadRequestException('Pagamento de fatura precisa de conta e cartão.');
       }
-      await this.bumpAccount(uid, accountId, -dto.amount);
+      const account = await this.requireAccount(uid, accountId);
+      if (account.origin !== 'open_finance') {
+        await this.bumpAccount(uid, accountId, -dto.amount);
+      }
       await this.bumpCardInvoice(uid, cardId, -dto.amount);
     } else if (dto.type === 'debt_payment') {
       if (!accountId || !debtId) {
         throw new BadRequestException('Parcela precisa de conta e empréstimo.');
       }
-      await this.bumpAccount(uid, accountId, -dto.amount);
+      const account = await this.requireAccount(uid, accountId);
+      if (account.origin !== 'open_finance') {
+        await this.bumpAccount(uid, accountId, -dto.amount);
+      }
       await this.bumpDebt(uid, debtId, -dto.amount);
     } else if (dto.type === 'transfer') {
       if (!accountId || !toAccountId) {
@@ -621,6 +632,69 @@ export class FinanceService {
     };
     await ref.set(payload);
     return { id: ref.id, ...payload };
+  }
+
+  async allocatePayment(
+    uid: string,
+    transactionId: string,
+    dto: AllocatePaymentDto,
+  ): Promise<LedgerTransaction> {
+    const cardId = dto.cardId?.trim() || null;
+    const debtId = dto.debtId?.trim() || null;
+    if (Boolean(cardId) === Boolean(debtId)) {
+      throw new BadRequestException(
+        'Escolha um cartão ou um empréstimo/boleto para vincular este Pix.',
+      );
+    }
+
+    const ref = this.col(uid, 'transactions').doc(transactionId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new NotFoundException('Lançamento não encontrado.');
+    }
+    const current = { id: snap.id, ...(snap.data() as Omit<LedgerTransaction, 'id'>) };
+    if (current.type !== 'expense') {
+      throw new BadRequestException(
+        'Só dá para declarar um Pix ou saída ainda sem vínculo.',
+      );
+    }
+    if (current.cardId || current.debtId) {
+      throw new BadRequestException('Este lançamento já está vinculado a um pagamento.');
+    }
+    if (!current.accountId) {
+      throw new BadRequestException('Esta saída precisa ter saído de uma conta.');
+    }
+
+    let type: TransactionType = 'card_payment';
+    let label = '';
+    if (cardId) {
+      const card = await this.requireCard(uid, cardId);
+      if (card.origin === 'open_finance') {
+        throw new BadRequestException(
+          'Cartão Open Finance já atualiza a fatura sozinho. Vincule só cartão manual.',
+        );
+      }
+      await this.bumpCardInvoice(uid, cardId, -current.amount);
+      label = card.name;
+    } else if (debtId) {
+      const debt = await this.requireDebt(uid, debtId);
+      await this.bumpDebt(uid, debtId, -current.amount);
+      label = debt.creditor;
+      type = 'debt_payment';
+    }
+
+    const description = current.description.includes(label)
+      ? current.description
+      : `${current.description} · ${label}`.slice(0, 120);
+    const now = new Date().toISOString();
+    await ref.update({
+      type,
+      cardId,
+      debtId,
+      description,
+      updatedAt: now,
+    });
+    return { ...current, type, cardId, debtId, description };
   }
 
   async safeToSpend(uid: string) {
@@ -772,44 +846,100 @@ export class FinanceService {
     };
   }
 
-  private async bumpAccount(uid: string, accountId: string, delta: number) {
-    const ref = this.col(uid, 'accounts').doc(accountId);
-    const snap = await ref.get();
+  private async requireAccount(uid: string, accountId: string): Promise<Account> {
+    const snap = await this.col(uid, 'accounts').doc(accountId).get();
     if (!snap.exists) {
       throw new NotFoundException('Conta não encontrada.');
     }
-    const current = snap.data() as Omit<Account, 'id'>;
-    await ref.update({
+    return { id: snap.id, ...(snap.data() as Omit<Account, 'id'>) };
+  }
+
+  private async requireCard(uid: string, cardId: string): Promise<CreditCard> {
+    const snap = await this.col(uid, 'cards').doc(cardId).get();
+    if (!snap.exists) {
+      throw new NotFoundException('Cartão não encontrado.');
+    }
+    return { id: snap.id, ...(snap.data() as Omit<CreditCard, 'id'>) };
+  }
+
+  private async requireDebt(uid: string, debtId: string): Promise<Debt> {
+    const snap = await this.col(uid, 'debts').doc(debtId).get();
+    if (!snap.exists) {
+      throw new NotFoundException('Empréstimo não encontrado.');
+    }
+    return { id: snap.id, ...(snap.data() as Omit<Debt, 'id'>) };
+  }
+
+  private async bumpAccount(uid: string, accountId: string, delta: number) {
+    const current = await this.requireAccount(uid, accountId);
+    await this.col(uid, 'accounts').doc(accountId).update({
       currentBalance: current.currentBalance + delta,
       updatedAt: new Date().toISOString(),
     });
   }
 
   private async bumpCardInvoice(uid: string, cardId: string, delta: number) {
-    const ref = this.col(uid, 'cards').doc(cardId);
-    const snap = await ref.get();
-    if (!snap.exists) {
-      throw new NotFoundException('Cartão não encontrado.');
-    }
-    const current = snap.data() as Omit<CreditCard, 'id'>;
-    await ref.update({
-      currentInvoice: Math.max(0, current.currentInvoice + delta),
+    const current = await this.requireCard(uid, cardId);
+    const next = applyInvoiceDelta(current, delta);
+    await this.col(uid, 'cards').doc(cardId).update({
+      currentInvoice: next.currentInvoice,
+      invoices: next.invoices,
       updatedAt: new Date().toISOString(),
     });
   }
 
   private async bumpDebt(uid: string, debtId: string, delta: number) {
-    const ref = this.col(uid, 'debts').doc(debtId);
-    const snap = await ref.get();
-    if (!snap.exists) {
-      throw new NotFoundException('Empréstimo não encontrado.');
-    }
-    const current = snap.data() as Omit<Debt, 'id'>;
-    await ref.update({
-      remainingBalance: Math.max(0, current.remainingBalance + delta),
+    const current = await this.requireDebt(uid, debtId);
+    await this.col(uid, 'debts').doc(debtId).update({
+      remainingBalance: Math.max(0, roundMoney(current.remainingBalance + delta)),
       updatedAt: new Date().toISOString(),
     });
   }
+}
+
+function applyInvoiceDelta(
+  card: CreditCard,
+  delta: number,
+): { currentInvoice: number; invoices: { month: string; amount: number }[] } {
+  const month = saoPauloToday().slice(0, 7);
+  const invoices = normalizeInvoices(card.invoices);
+  if (delta < 0) {
+    const paid = roundMoney(-delta);
+    let left = paid;
+    const exact = invoices.find((row) => Math.abs(row.amount - paid) < 0.05 && row.amount > 0);
+    if (exact) {
+      exact.amount = 0;
+      left = 0;
+    } else {
+      for (const row of invoices) {
+        if (left <= 0) {
+          break;
+        }
+        const take = Math.min(row.amount, left);
+        row.amount = roundMoney(row.amount - take);
+        left = roundMoney(left - take);
+      }
+    }
+    const current =
+      invoices.find((row) => row.month === month)?.amount ??
+      Math.max(0, roundMoney(card.currentInvoice - paid));
+    return {
+      currentInvoice: Math.max(0, roundMoney(current)),
+      invoices,
+    };
+  }
+
+  const existing = invoices.find((row) => row.month === month);
+  if (existing) {
+    existing.amount = roundMoney(existing.amount + delta);
+  } else {
+    invoices.push({ month, amount: roundMoney(Math.max(0, card.currentInvoice + delta)) });
+  }
+  const current = invoices.find((row) => row.month === month)?.amount ?? card.currentInvoice + delta;
+  return {
+    currentInvoice: Math.max(0, roundMoney(current)),
+    invoices: normalizeInvoices(invoices),
+  };
 }
 
 function mapAccountKind(subtype?: string | null): AccountKind {

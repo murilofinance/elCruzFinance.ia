@@ -9,6 +9,7 @@ import {
   SignOut,
 } from '@phosphor-icons/react';
 import { AddItemDialog, type AddTab } from '../components/AddItemDialog';
+import { AllocatePaymentDialog, type AllocateMode } from '../components/AllocatePaymentDialog';
 import { BalanceChart } from '../components/BalanceChart';
 import { FinanceChat } from '../components/FinanceChat';
 import { ItemDetailDialog, type DetailTarget } from '../components/ItemDetailDialog';
@@ -27,7 +28,12 @@ import {
   type ProjectionBoard,
   type SafeToSpend,
 } from '../lib/api';
-import { bankTagClass, historySourceTag } from '../lib/labels';
+import {
+  bankTagClass,
+  canAllocatePayment,
+  historyPaymentHint,
+  historySourceTag,
+} from '../lib/labels';
 
 const ZERO_SAFE: SafeToSpend = {
   cash: 0,
@@ -58,6 +64,7 @@ export function HomePage() {
   const [connections, setConnections] = useState<PluggyConnection[]>([]);
   const [projections, setProjections] = useState<ProjectionBoard>(EMPTY_PROJECTIONS);
   const [detail, setDetail] = useState<DetailTarget | null>(null);
+  const [allocate, setAllocate] = useState<AllocateMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [apiDown, setApiDown] = useState(false);
@@ -169,6 +176,28 @@ export function HomePage() {
       await reload();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmAllocate(
+    txId: string,
+    body: { cardId?: string; debtId?: string },
+  ) {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/transactions/${txId}/allocate`, {
+        method: 'POST',
+        body,
+      });
+      setAllocate(null);
+      setDetail(null);
+      setNotice('Pix vinculado. A fatura ou parcela foi abatida, sem descontar o saldo de novo.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível vincular o Pix');
     } finally {
       setBusy(false);
     }
@@ -373,6 +402,7 @@ export function HomePage() {
           </h2>
           <p className="mt-1 text-sm text-muted-fg">
             Extrato dos últimos 90 dias (Open Finance) e lançamentos manuais.
+            Toque numa saída Pix para dizer que ela pagou um cartão ou boleto manual.
           </p>
           {transactions.length === 0 ? (
             <p className="mt-5 text-sm text-muted-fg">
@@ -385,11 +415,10 @@ export function HomePage() {
               {transactions.slice(0, 40).map((item) => {
                 const inflow = item.type === 'income';
                 const tag = historySourceTag(item, accounts, cards);
-                return (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between gap-4 py-3 text-sm"
-                  >
+                const hint = historyPaymentHint(item, cards, debts);
+                const allocable = canAllocatePayment(item);
+                const inner = (
+                  <>
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-2">
                         <span className={bankTagClass(tag)}>{tag}</span>
@@ -397,6 +426,7 @@ export function HomePage() {
                       </span>
                       <span className="mt-1 block text-[11px] text-muted-fg">
                         {formatDate(item.date)}
+                        {hint ? ` · ${hint}` : allocable ? ' · toque para vincular pagamento' : ''}
                       </span>
                     </span>
                     <span
@@ -407,6 +437,24 @@ export function HomePage() {
                       {inflow ? '+' : '−'}
                       {formatBRL(item.amount)}
                     </span>
+                  </>
+                );
+                return (
+                  <li key={item.id} className="text-sm">
+                    {allocable ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError(null);
+                          setAllocate({ source: 'tx', tx: item });
+                        }}
+                        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-4 py-3 text-left transition-colors duration-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {inner}
+                      </button>
+                    ) : (
+                      <div className="flex items-center justify-between gap-4 py-3">{inner}</div>
+                    )}
                   </li>
                 );
               })}
@@ -436,6 +484,27 @@ export function HomePage() {
         investments={investments}
         transactions={transactions}
         onClose={() => setDetail(null)}
+        onPay={(target) => {
+          setError(null);
+          setDetail(null);
+          setAllocate({ source: 'payable', kind: target.type, id: target.id });
+        }}
+        onAllocate={(tx) => {
+          setError(null);
+          setDetail(null);
+          setAllocate({ source: 'tx', tx });
+        }}
+      />
+      <AllocatePaymentDialog
+        mode={allocate}
+        accounts={accounts}
+        cards={cards}
+        debts={debts}
+        transactions={transactions}
+        busy={busy}
+        error={error}
+        onClose={() => setAllocate(null)}
+        onConfirm={confirmAllocate}
       />
     </div>
   );

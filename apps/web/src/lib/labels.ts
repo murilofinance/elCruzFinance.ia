@@ -1,11 +1,21 @@
-import type { Account, CreditCard, LedgerTransaction } from './api';
+import type { Account, CreditCard, Debt, LedgerTransaction } from './api';
 
 export function historySourceTag(
   item: LedgerTransaction,
   accounts: Account[],
   cards: CreditCard[],
 ): string {
-  if (item.cardId) {
+  if (
+    (item.type === 'card_payment' || item.type === 'debt_payment') &&
+    item.accountId
+  ) {
+    const account = accounts.find((row) => row.id === item.accountId);
+    if (account) {
+      const bank = shortBankLabel(account.institution, account.name);
+      return account.kind === 'savings' ? `${bank} Poupança` : bank;
+    }
+  }
+  if (item.cardId && item.type !== 'card_payment') {
     const card = cards.find((row) => row.id === item.cardId);
     if (card) {
       return shortBankLabel(card.institution, card.name);
@@ -19,6 +29,40 @@ export function historySourceTag(
     }
   }
   return item.source === 'open_finance' ? 'Open Finance' : 'Manual';
+}
+
+export function historyPaymentHint(
+  item: LedgerTransaction,
+  cards: CreditCard[],
+  debts: Debt[],
+): string | null {
+  if (item.type === 'card_payment') {
+    const card = cards.find((row) => row.id === item.cardId);
+    return card ? `Pagou ${card.name}` : 'Pagou fatura';
+  }
+  if (item.type === 'debt_payment') {
+    const debt = debts.find((row) => row.id === item.debtId);
+    return debt ? `Pagou ${debt.creditor}` : 'Pagou parcela';
+  }
+  return null;
+}
+
+export function canAllocatePayment(item: LedgerTransaction): boolean {
+  return (
+    item.type === 'expense' &&
+    Boolean(item.accountId) &&
+    !item.cardId &&
+    !item.debtId
+  );
+}
+
+export function cardDueAmount(card: CreditCard): number {
+  const latest = [...(card.invoices ?? [])].sort((a, b) => b.month.localeCompare(a.month))[0];
+  return latest?.amount ?? card.currentInvoice;
+}
+
+export function isManualCard(card: CreditCard): boolean {
+  return card.origin !== 'open_finance';
 }
 
 export function shortBankLabel(

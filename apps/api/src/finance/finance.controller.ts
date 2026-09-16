@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { CurrentUser } from '../auth/current-user.decorator';
 import {
@@ -6,6 +6,7 @@ import {
   CreateCardDto,
   CreateDebtDto,
   CreateInvestmentDto,
+  AllocatePaymentDto,
   CreateTransactionDto,
   ConnectOpenFinanceDto,
   SyncOpenFinanceDto,
@@ -99,6 +100,15 @@ export class FinanceController {
     @Body() body: CreateTransactionDto,
   ) {
     return this.finance.createTransaction(user.uid, body);
+  }
+
+  @Post('transactions/:id/allocate')
+  allocatePayment(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: AllocatePaymentDto,
+  ) {
+    return this.finance.allocatePayment(user.uid, id, body);
   }
 
   @Get('safe-to-spend')
