@@ -27,7 +27,7 @@ import {
   type ProjectionBoard,
   type SafeToSpend,
 } from '../lib/api';
-import { historySourceTag } from '../lib/labels';
+import { bankTagClass, historySourceTag } from '../lib/labels';
 
 const ZERO_SAFE: SafeToSpend = {
   cash: 0,
@@ -391,9 +391,7 @@ export function HomePage() {
                   >
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className="inline-flex shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] tracking-wide text-primary uppercase">
-                          {tag}
-                        </span>
+                        <span className={bankTagClass(tag)}>{tag}</span>
                         <span className="truncate">{item.description}</span>
                       </span>
                       <span className="mt-1 block text-[11px] text-muted-fg">

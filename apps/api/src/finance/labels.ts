@@ -9,6 +9,9 @@ export function shortBankLabel(
   if (blob.includes('picpay') || blob.includes('pic pay')) {
     return 'PicPay';
   }
+  if (blob.includes('mercado pago') || blob.includes('mercadopago')) {
+    return 'Mercado Pago';
+  }
   if (blob.includes('itau') || blob.includes('itaú')) {
     return 'Itaú';
   }
@@ -20,6 +23,9 @@ export function shortBankLabel(
   }
   if (blob.includes('caixa')) {
     return 'Caixa';
+  }
+  if (/\bxp\b/.test(blob) || blob.includes('xp investimento')) {
+    return 'XP';
   }
   if (blob.includes('banco inter') || /\binter\b/.test(blob)) {
     return 'Inter';
