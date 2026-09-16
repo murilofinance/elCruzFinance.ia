@@ -1,10 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm --prefix ./apps/web install --no-workspaces",
-  "buildCommand": "npm --prefix ./apps/web run build",
+  "installCommand": "npm --prefix ./apps/api install --no-workspaces --include=dev && npm --prefix ./apps/web install --no-workspaces --include=dev",
+  "buildCommand": "npm --prefix ./apps/api run build && npm --prefix ./apps/web run build",
   "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "apps/api/dist/**",
+      "maxDuration": 30
+    },
+    "api/[...path].js": {
+      "includeFiles": "apps/api/dist/**",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

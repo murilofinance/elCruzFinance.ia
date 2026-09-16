@@ -14,9 +14,9 @@ describe('AppController', () => {
 
   describe('health', () => {
     it('should return ok', () => {
-      expect(appController.health()).toEqual({
+      expect(appController.health()).toMatchObject({
         ok: true,
-        service: 'minhas-financas-api',
+        service: 'elcruz-finance-api',
       });
     });
   });

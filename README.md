@@ -1,25 +1,23 @@
 # ElCruz Finance.AI
 
-Controle financeiro pessoal. **Na Vercel sobe só o site.** A API NestJS fica no seu PC até a gente ligar Pluggy e Gemini.
+Controle financeiro pessoal. Na Vercel sobem o **site** e a **API NestJS** (`/api`).
 
 ## O que é cada peça
 
 ```
 Navegador  →  Firebase Auth (login)
            →  Firestore (gastos, quando gravarmos pelo app)
-           →  Vercel = pasta apps/web (HTML/CSS/JS)
-
-Seu PC     →  NestJS em localhost:3001
-              (Pluggy, Gemini, cron — chaves secretas que NÃO podem ir ao browser)
+           →  Vercel site  = apps/web
+           →  Vercel /api  = NestJS (token Firebase, Pluggy, Gemini)
 ```
 
 | Onde | O quê |
 |---|---|
-| **Vercel** (`el-cruz-finance-ia.vercel.app`) | Front: login e telas. Fala direto com o Firebase. |
-| **Firebase** | Authentication + Firestore. Já é o “backend” de dados e login. |
-| **NestJS (local)** | Só quando precisarmos de segredo: Open Finance (Pluggy) e OCR (Gemini). |
+| **Vercel** (páginas) | Front: login e telas. |
+| **Vercel** (`/api`) | NestJS: valida o token, fala com Firestore Admin, Pluggy e Gemini. |
+| **Firebase** | Authentication + Firestore. |
 
-Não precisamos da API no ar para o login funcionar. Precisaremos dela depois para Nubank automática e leitura de print — o `client_secret` da Pluggy e a chave do Gemini não podem ficar no JavaScript público.
+Segredos (`FIREBASE_PRIVATE_KEY`, `PLUGGY_CLIENT_SECRET`, `GEMINI_API_KEY`) ficam nas Environment Variables da Vercel — nunca no JavaScript do browser.
 
 ## Rodar local
 
@@ -35,6 +33,6 @@ http://localhost:5173
 npm run dev:api
 ```
 
-http://localhost:3001/api/health — opcional agora; o login não depende disso.
+http://localhost:3001/api/health
 
 Guias: [BRAINSTORM.md](BRAINSTORM.md) · [docs/PASSO-A-PASSO.md](docs/PASSO-A-PASSO.md)

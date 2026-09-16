@@ -33,7 +33,7 @@ Não precisa de: Belvo, conta de banco extra, cartão de crédito (plano Spark d
 | **Regras do Firestore** | Tranca da gaveta. Mesmo que alguém tente no browser, só vê `users/{seuUid}`. | Arquivo `firebase/firestore.rules`. |
 | **Meu Pluggy** | Você autoriza a Nubank (Open Finance). | Consentimento no app da Nubank. |
 | **Pluggy Dashboard** | Credenciais de API (`client_id` / `client_secret`) para o NestJS puxar esses dados. | Aplicação de desenvolvimento. |
-| **Vercel** | O servidor na internet. Sobe o **site** (login e telas). A API NestJS fica local por enquanto. | Projeto ligado ao Git. |
+| **Vercel** | O servidor na internet. Sobe o site e a API NestJS em `/api`. | Projeto ligado ao Git + variáveis de ambiente. |
 | **Gemini (AI Studio)** | Lê o print e devolve JSON (loja, valor, data). | Chave de API. |
 
 O **browser nunca** usa a conta de serviço. O site só faz login no Firebase e manda o crachá (`Authorization: Bearer ...`) para o NestJS. O NestJS valida o crachá e só então toca no Firestore.
@@ -173,13 +173,28 @@ Consentimento no app da Nubank dura cerca de 12 meses; você pode revogar em Con
 
 ## 4. Vercel
 
-Na Vercel sobe **só o site** (`apps/web` → pasta `dist`). Login e dados passam pelo **Firebase no navegador**. A API NestJS **não** entra neste deploy; ela fica local até Pluggy/Gemini.
+Na Vercel sobem o **site** (`apps/web/dist`) e a **API NestJS** em `/api`. A home é arquivo estático; só caminhos `/api/...` chamam o Nest. Root Directory deve ser a **raiz do repositório**, não `apps/api`.
 
 1. Vercel → Project → Settings → General
    - Root Directory: vazio (raiz do repositório)
    - Framework Preset: Other
-2. O `vercel.json` já instala e gera o build só de `apps/web`. Não precisa de `FIREBASE_PRIVATE_KEY` na Vercel agora.
-3. Firebase Authentication → Settings → Authorized domains → adicionar `el-cruz-finance-ia.vercel.app` (e qualquer domínio custom).
+2. Settings → Environment Variables (Production), a partir de `apps/api/.env`:
+
+```
+FIREBASE_PROJECT_ID
+FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY
+WEB_ORIGIN=https://el-cruz-finance-ia.vercel.app
+PLUGGY_CLIENT_ID
+PLUGGY_CLIENT_SECRET
+PLUGGY_ITEM_ID
+GEMINI_API_KEY
+```
+
+`FIREBASE_PRIVATE_KEY` vai entre aspas, com `\n` nas quebras, igual ao `.env` local.
+
+3. Firebase Authentication → Settings → Authorized domains → adicionar `el-cruz-finance-ia.vercel.app`.
+4. Depois do deploy, abra `https://el-cruz-finance-ia.vercel.app/api/health`. Deve devolver `ok: true` e `firebase` / `pluggy` conforme as variáveis.
 
 ---
 

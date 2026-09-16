@@ -21,7 +21,20 @@ async function ensureApp() {
   return server;
 }
 
+function withApiPrefix(req: Request): void {
+  const current = req.url ?? '/';
+  const path = current.split('?')[0] ?? '/';
+  if (path === '/api' || path.startsWith('/api/')) {
+    return;
+  }
+  const query = current.includes('?') ? current.slice(current.indexOf('?')) : '';
+  const prefixed =
+    path === '/' ? '/api' : `/api${path.startsWith('/') ? path : `/${path}`}`;
+  req.url = `${prefixed}${query}`;
+}
+
 export default async function handler(req: Request, res: Response) {
+  withApiPrefix(req);
   const instance = await ensureApp();
   instance(req, res);
 }

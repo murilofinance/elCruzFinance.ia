@@ -22,7 +22,10 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/api/health')
       .expect(200)
-      .expect({ ok: true, service: 'minhas-financas-api' });
+      .expect((res) => {
+        expect(res.body.ok).toBe(true);
+        expect(res.body.service).toBe('elcruz-finance-api');
+      });
   });
 
   afterEach(async () => {
