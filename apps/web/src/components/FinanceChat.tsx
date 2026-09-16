@@ -68,7 +68,7 @@ export function FinanceChat() {
   }
 
   return (
-    <section className="flex min-h-[380px] flex-col rounded-2xl border border-white/10 bg-[#0b100e] p-5 sm:p-6">
+    <section className="flex min-h-[560px] flex-col rounded-2xl border border-white/10 bg-[#0b100e] p-5 sm:p-6">
       <p className="flex items-center gap-2 text-[11px] tracking-[0.14em] text-muted-fg uppercase">
         <Sparkle className="h-4 w-4" weight="bold" aria-hidden />
         Assistente
@@ -78,7 +78,7 @@ export function FinanceChat() {
       </p>
       <ul
         ref={scroller}
-        className="mt-4 flex max-h-96 min-h-40 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1 text-sm"
+        className="mt-4 flex min-h-[28rem] max-h-[min(70dvh,40rem)] flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1 text-sm"
       >
         {turns.map((turn, index) => (
           <li
