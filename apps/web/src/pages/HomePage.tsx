@@ -1,41 +1,9 @@
-import { useEffect, useState } from 'react';
 import { SignOut } from '@phosphor-icons/react';
 import { useAuth } from '../auth/AuthProvider';
 import { BrandBackdrop } from '../components/BrandBackdrop';
-import { apiFetch, type MeResponse } from '../lib/api';
 
 export function HomePage() {
   const { user, logout } = useAuth();
-  const [me, setMe] = useState<MeResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    apiFetch<MeResponse>('/me')
-      .then((data) => {
-        if (!cancelled) {
-          setMe(data);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : 'Falha ao falar com a API',
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   return (
     <BrandBackdrop scrim="bg-black/75">
@@ -49,8 +17,8 @@ export function HomePage() {
               Você está dentro
             </h1>
             <p className="mt-2 text-sm text-muted-fg">
-              O Firebase autenticou. A API valida o token e grava seu perfil no
-              Firestore.
+              O Firebase autenticou esta conta. Cartões, faturas e Open Finance
+              entram nas próximas telas.
             </p>
           </div>
           <button
@@ -75,30 +43,6 @@ export function HomePage() {
               <dd className="break-all">{user?.uid}</dd>
             </div>
           </dl>
-        </section>
-
-        <section className="rounded-xl border border-border bg-black/70 p-6 backdrop-blur-md">
-          <h2 className="text-sm font-medium text-muted-fg">GET /api/me</h2>
-          {loading ? (
-            <p className="mt-4 text-sm text-muted-fg">Falando com a API…</p>
-          ) : error ? (
-            <p role="alert" className="mt-4 text-sm text-destructive">
-              {error}. Na Vercel, cadastre FIREBASE_PROJECT_ID,
-              FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY. Em local, rode npm
-              run dev:api.
-            </p>
-          ) : me ? (
-            <dl className="mt-4 grid gap-3 text-sm">
-              <div>
-                <dt className="text-muted-fg">Perfil no Firestore</dt>
-                <dd>users/{me.uid}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-fg">Criado em</dt>
-                <dd>{me.createdAt}</dd>
-              </div>
-            </dl>
-          ) : null}
         </section>
       </main>
     </BrandBackdrop>

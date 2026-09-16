@@ -1,29 +1,40 @@
-# Minhas finanças
+# ElCruz Finance.AI
 
-Sistema web pessoal de controle financeiro (NestJS + Firebase + Vercel).
+Controle financeiro pessoal. **Na Vercel sobe só o site.** A API NestJS fica no seu PC até a gente ligar Pluggy e Gemini.
 
-## Comece por aqui
+## O que é cada peça
 
-1. **O que construir e as regras de negócio:** [BRAINSTORM.md](BRAINSTORM.md)
-2. **O que você precisa clicar e configurar:** [docs/PASSO-A-PASSO.md](docs/PASSO-A-PASSO.md)
+```
+Navegador  →  Firebase Auth (login)
+           →  Firestore (gastos, quando gravarmos pelo app)
+           →  Vercel = pasta apps/web (HTML/CSS/JS)
+
+Seu PC     →  NestJS em localhost:3001
+              (Pluggy, Gemini, cron — chaves secretas que NÃO podem ir ao browser)
+```
+
+| Onde | O quê |
+|---|---|
+| **Vercel** (`el-cruz-finance-ia.vercel.app`) | Front: login e telas. Fala direto com o Firebase. |
+| **Firebase** | Authentication + Firestore. Já é o “backend” de dados e login. |
+| **NestJS (local)** | Só quando precisarmos de segredo: Open Finance (Pluggy) e OCR (Gemini). |
+
+Não precisamos da API no ar para o login funcionar. Precisaremos dela depois para Nubank automática e leitura de print — o `client_secret` da Pluggy e a chave do Gemini não podem ficar no JavaScript público.
 
 ## Rodar local
 
-```bash
-npm install
-copy apps\api\.env.example apps\api\.env
-copy apps\web\.env.example apps\web\.env.local
-```
+Na raiz, depois de `npm install`, **dois terminais**:
 
-Preencha os `.env` com o Firebase (passo 2 do guia). Depois, em dois terminais:
-
-```bash
-npm run dev:api
-```
-
-```bash
+```powershell
 npm run dev:web
 ```
 
-Site: http://localhost:5173  
-API: http://localhost:3001/api/health
+http://localhost:5173
+
+```powershell
+npm run dev:api
+```
+
+http://localhost:3001/api/health — opcional agora; o login não depende disso.
+
+Guias: [BRAINSTORM.md](BRAINSTORM.md) · [docs/PASSO-A-PASSO.md](docs/PASSO-A-PASSO.md)

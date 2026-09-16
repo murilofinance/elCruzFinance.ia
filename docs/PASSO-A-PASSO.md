@@ -33,7 +33,7 @@ Não precisa de: Belvo, conta de banco extra, cartão de crédito (plano Spark d
 | **Regras do Firestore** | Tranca da gaveta. Mesmo que alguém tente no browser, só vê `users/{seuUid}`. | Arquivo `firebase/firestore.rules`. |
 | **Meu Pluggy** | Você autoriza a Nubank (Open Finance). | Consentimento no app da Nubank. |
 | **Pluggy Dashboard** | Credenciais de API (`client_id` / `client_secret`) para o NestJS puxar esses dados. | Aplicação de desenvolvimento. |
-| **Vercel** | O servidor na internet. Sobe o site e a API NestJS. | Projeto ligado ao Git, variáveis de ambiente. |
+| **Vercel** | O servidor na internet. Sobe o **site** (login e telas). A API NestJS fica local por enquanto. | Projeto ligado ao Git. |
 | **Gemini (AI Studio)** | Lê o print e devolve JSON (loja, valor, data). | Chave de API. |
 
 O **browser nunca** usa a conta de serviço. O site só faz login no Firebase e manda o crachá (`Authorization: Bearer ...`) para o NestJS. O NestJS valida o crachá e só então toca no Firestore.
@@ -173,24 +173,13 @@ Consentimento no app da Nubank dura cerca de 12 meses; você pode revogar em Con
 
 ## 4. Vercel
 
-O site em produção é **estático** (`apps/web/dist`). Só `/api/*` chama o NestJS. Se a home cair em `FUNCTION_INVOCATION_FAILED`, o projeto está tratando a página como function — Root Directory deve ser a **raiz do repositório**, não `apps/api`.
+Na Vercel sobe **só o site** (`apps/web` → pasta `dist`). Login e dados passam pelo **Firebase no navegador**. A API NestJS **não** entra neste deploy; ela fica local até Pluggy/Gemini.
 
-1. Vercel → Project → Settings → General  
-   - Root Directory: vazio (raiz)  
-   - Framework Preset: Other  
-2. Settings → Environment Variables (Production), a partir de `apps/api/.env`:
-
-```
-FIREBASE_PROJECT_ID
-FIREBASE_CLIENT_EMAIL
-FIREBASE_PRIVATE_KEY
-WEB_ORIGIN=https://el-cruz-finance-ia.vercel.app
-```
-
-`FIREBASE_PRIVATE_KEY` vai entre aspas, com `\n` nas quebras, igual ao `.env` local. Sem isso o login do Firebase no browser funciona, mas `GET /api/me` falha.
-
+1. Vercel → Project → Settings → General
+   - Root Directory: vazio (raiz do repositório)
+   - Framework Preset: Other
+2. O `vercel.json` já instala e gera o build só de `apps/web`. Não precisa de `FIREBASE_PRIVATE_KEY` na Vercel agora.
 3. Firebase Authentication → Settings → Authorized domains → adicionar `el-cruz-finance-ia.vercel.app` (e qualquer domínio custom).
-4. Redeploy depois de salvar as variáveis.
 
 ---
 

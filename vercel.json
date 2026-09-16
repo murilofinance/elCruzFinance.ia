@@ -1,11 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "NPM_CONFIG_PRODUCTION=false npm install",
-  "buildCommand": "npm run build --workspace=api && npm run build --workspace=web",
+  "installCommand": "npm --prefix ./apps/web install --no-workspaces",
+  "buildCommand": "npm --prefix ./apps/web run build",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
