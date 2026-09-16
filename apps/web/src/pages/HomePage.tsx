@@ -11,6 +11,7 @@ import {
 import { AddItemDialog, type AddTab } from '../components/AddItemDialog';
 import { AllocatePaymentDialog, type AllocateMode } from '../components/AllocatePaymentDialog';
 import { BalanceChart } from '../components/BalanceChart';
+import { BrandLogo } from '../components/BrandLogo';
 import { FinanceChat } from '../components/FinanceChat';
 import { ItemDetailDialog, type DetailTarget } from '../components/ItemDetailDialog';
 import { ProjectionsPanel } from '../components/ProjectionsPanel';
@@ -231,16 +232,10 @@ export function HomePage() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-white/8 bg-background/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-5 sm:px-8">
-          <img
-            src="/brand/mark.png"
-            alt="ElCruz Finance"
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-md"
-          />
-          <nav aria-label="Principal" className="flex h-14 items-center">
-            <span className="flex h-14 items-center border-b-2 border-primary px-1 text-sm font-medium text-primary">
+        <div className="mx-auto flex min-h-20 max-w-6xl items-center gap-4 px-5 py-2 sm:px-8">
+          <BrandLogo size="header" />
+          <nav aria-label="Principal" className="flex items-center self-stretch">
+            <span className="flex h-full items-center border-b-2 border-primary px-1 text-sm font-medium text-primary">
               Overview
             </span>
           </nav>
