@@ -9,19 +9,25 @@ import {
   CreateCardDto,
   CreateDebtDto,
   CreateTransactionDto,
+  ConnectOpenFinanceDto,
 } from './finance.dto';
 import {
   Account,
+  AccountKind,
   Category,
   CreditCard,
   Debt,
   DEFAULT_CATEGORIES,
   LedgerTransaction,
 } from './finance.types';
+import { PluggyService, type PluggyAccount } from './pluggy.service';
 
 @Injectable()
 export class FinanceService {
-  constructor(private readonly firebase: FirebaseService) {}
+  constructor(
+    private readonly firebase: FirebaseService,
+    private readonly pluggy: PluggyService,
+  ) {}
 
   private col(uid: string, name: string) {
     return this.firebase.db.collection(`users/${uid}/${name}`);
@@ -64,6 +70,7 @@ export class FinanceService {
       currency: 'BRL',
       currentBalance: dto.currentBalance,
       origin: 'manual',
+      externalId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -80,6 +87,12 @@ export class FinanceService {
 
   async createCard(uid: string, dto: CreateCardDto): Promise<CreditCard> {
     const now = new Date().toISOString();
+    const invoices = normalizeInvoices(dto.invoices);
+    const month = now.slice(0, 7);
+    const currentInvoice =
+      invoices.find((item) => item.month === month)?.amount ??
+      invoices[0]?.amount ??
+      0;
     const ref = this.col(uid, 'cards').doc();
     const payload: Omit<CreditCard, 'id'> = {
       name: dto.name.trim(),
@@ -87,8 +100,10 @@ export class FinanceService {
       creditLimit: dto.creditLimit,
       closingDay: dto.closingDay,
       dueDay: dto.dueDay,
-      currentInvoice: dto.currentInvoice ?? 0,
+      currentInvoice,
+      invoices,
       origin: 'manual',
+      externalId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -108,14 +123,159 @@ export class FinanceService {
     const ref = this.col(uid, 'debts').doc();
     const payload: Omit<Debt, 'id'> = {
       creditor: dto.creditor.trim(),
-      remainingBalance: dto.remainingBalance,
-      installmentAmount: dto.installmentAmount,
+      principalReceived: dto.principalReceived,
+      totalToPay: dto.totalToPay,
+      installmentCount: dto.installmentCount,
+      remainingBalance: dto.totalToPay,
+      installmentAmount:
+        dto.installmentAmount > 0
+          ? dto.installmentAmount
+          : dto.installmentCount > 0
+            ? roundMoney(dto.totalToPay / dto.installmentCount)
+            : 0,
       dueDay: dto.dueDay,
       createdAt: now,
       updatedAt: now,
     };
     await ref.set(payload);
     return { id: ref.id, ...payload };
+  }
+
+  async connectOpenFinance(uid: string, dto: ConnectOpenFinanceDto) {
+    const snapshot = await this.pluggy.fetchSnapshot({
+      clientId: dto.clientId.trim(),
+      clientSecret: dto.clientSecret.trim(),
+      itemId: dto.itemId.trim(),
+    });
+
+    const now = new Date().toISOString();
+    const connectionRef = this.col(uid, 'connections').doc(dto.itemId.trim());
+    const existing = await connectionRef.get();
+    await connectionRef.set(
+      {
+        itemId: dto.itemId.trim(),
+        clientId: dto.clientId.trim(),
+        clientSecret: dto.clientSecret.trim(),
+        connectorName: snapshot.connectorName,
+        itemStatus: snapshot.itemStatus,
+        status: snapshot.accounts.length > 0 ? 'ok' : 'empty',
+        lastSyncAt: now,
+        updatedAt: now,
+        createdAt: existing.exists
+          ? (existing.data()?.createdAt as string | undefined) ?? now
+          : now,
+      },
+      { merge: true },
+    );
+
+    let accounts = 0;
+    let cards = 0;
+    for (const remote of snapshot.accounts) {
+      if (remote.type === 'CREDIT') {
+        await this.upsertPluggyCard(uid, remote, snapshot.connectorName, now);
+        cards += 1;
+      } else {
+        await this.upsertPluggyAccount(uid, remote, snapshot.connectorName, now);
+        accounts += 1;
+      }
+    }
+
+    return {
+      connectorName: snapshot.connectorName,
+      itemStatus: snapshot.itemStatus,
+      accounts,
+      cards,
+    };
+  }
+
+  private async upsertPluggyAccount(
+    uid: string,
+    remote: PluggyAccount,
+    institution: string,
+    now: string,
+  ) {
+    const existing = await this.col(uid, 'accounts')
+      .where('externalId', '==', remote.id)
+      .limit(1)
+      .get();
+    const payload: Omit<Account, 'id'> = {
+      name: remote.marketingName?.trim() || remote.name?.trim() || 'Conta',
+      institution,
+      kind: mapAccountKind(remote.subtype),
+      currency: 'BRL',
+      currentBalance: Number(remote.balance ?? 0),
+      origin: 'open_finance',
+      externalId: remote.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (existing.empty) {
+      await this.col(uid, 'accounts').doc().set(payload);
+      return;
+    }
+    const snap = existing.docs[0];
+    const previous = snap.data() as Omit<Account, 'id'>;
+    await snap.ref.update({
+      name: payload.name,
+      institution: payload.institution,
+      kind: payload.kind,
+      currentBalance: payload.currentBalance,
+      origin: 'open_finance',
+      externalId: remote.id,
+      updatedAt: now,
+      createdAt: previous.createdAt ?? now,
+    });
+  }
+
+  private async upsertPluggyCard(
+    uid: string,
+    remote: PluggyAccount,
+    institution: string,
+    now: string,
+  ) {
+    const existing = await this.col(uid, 'cards')
+      .where('externalId', '==', remote.id)
+      .limit(1)
+      .get();
+    const close = dayFrom(remote.creditData?.balanceCloseDate);
+    const due = dayFrom(remote.creditData?.balanceDueDate);
+    const payload: Omit<CreditCard, 'id'> = {
+      name: remote.marketingName?.trim() || remote.name?.trim() || 'Cartão',
+      institution,
+      creditLimit: Number(remote.creditData?.creditLimit ?? 0),
+      closingDay: close,
+      dueDay: due,
+      currentInvoice: Math.abs(Number(remote.balance ?? 0)),
+      invoices: [
+        {
+          month: now.slice(0, 7),
+          amount: Math.abs(Number(remote.balance ?? 0)),
+        },
+      ],
+      origin: 'open_finance',
+      externalId: remote.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (existing.empty) {
+      await this.col(uid, 'cards').doc().set(payload);
+      return;
+    }
+    const snap = existing.docs[0];
+    const previous = snap.data() as Omit<CreditCard, 'id'>;
+    await snap.ref.update({
+      name: payload.name,
+      institution: payload.institution,
+      creditLimit: payload.creditLimit,
+      closingDay: payload.closingDay,
+      dueDay: payload.dueDay,
+      currentInvoice: payload.currentInvoice,
+      invoices: payload.invoices,
+      origin: 'open_finance',
+      externalId: remote.id,
+      updatedAt: now,
+      createdAt: previous.createdAt ?? now,
+    });
   }
 
   async listTransactions(uid: string): Promise<LedgerTransaction[]> {
@@ -141,6 +301,7 @@ export class FinanceService {
     const accountId = dto.accountId ?? null;
     const cardId = dto.cardId ?? null;
     const debtId = dto.debtId ?? null;
+    const toAccountId = dto.toAccountId ?? null;
 
     if (dto.type === 'income' || dto.type === 'expense') {
       if (dto.type === 'expense' && cardId && !accountId) {
@@ -165,8 +326,19 @@ export class FinanceService {
       }
       await this.bumpAccount(uid, accountId, -dto.amount);
       await this.bumpDebt(uid, debtId, -dto.amount);
+    } else if (dto.type === 'transfer') {
+      if (!accountId || !toAccountId) {
+        throw new BadRequestException(
+          'Transferência precisa da conta de origem e da de destino.',
+        );
+      }
+      if (accountId === toAccountId) {
+        throw new BadRequestException('Escolha duas contas diferentes.');
+      }
+      await this.bumpAccount(uid, accountId, -dto.amount);
+      await this.bumpAccount(uid, toAccountId, dto.amount);
     } else {
-      throw new BadRequestException('Transferência entre contas entra na v2.');
+      throw new BadRequestException('Tipo de lançamento inválido.');
     }
 
     const ref = this.col(uid, 'transactions').doc();
@@ -178,6 +350,7 @@ export class FinanceService {
       accountId,
       cardId,
       debtId,
+      toAccountId,
       categoryId: dto.categoryId ?? null,
       source: 'manual',
       status: 'confirmed',
@@ -210,8 +383,8 @@ export class FinanceService {
     );
 
     const openInvoices = cards
-      .filter((card) => card.currentInvoice > 0 && !paidCardThisMonth.has(card.id))
-      .reduce((sum, card) => sum + card.currentInvoice, 0);
+      .filter((card) => invoiceThisMonth(card) > 0 && !paidCardThisMonth.has(card.id))
+      .reduce((sum, card) => sum + invoiceThisMonth(card), 0);
 
     const openInstallments = debts
       .filter((debt) => debt.installmentAmount > 0 && !paidDebtThisMonth.has(debt.id))
@@ -266,4 +439,40 @@ export class FinanceService {
       updatedAt: new Date().toISOString(),
     });
   }
+}
+
+function mapAccountKind(subtype?: string | null): AccountKind {
+  if (subtype === 'SAVINGS_ACCOUNT') {
+    return 'savings';
+  }
+  return 'checking';
+}
+
+function dayFrom(iso?: string | null): number {
+  const day = Number(iso?.slice(8, 10));
+  return day >= 1 && day <= 31 ? day : 10;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeInvoices(
+  invoices: { month: string; amount: number }[] | undefined,
+): { month: string; amount: number }[] {
+  const map = new Map<string, number>();
+  for (const item of invoices ?? []) {
+    if (!/^\d{4}-\d{2}$/.test(item.month)) {
+      continue;
+    }
+    map.set(item.month, Number(item.amount) || 0);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, amount]) => ({ month, amount }));
+}
+
+function invoiceThisMonth(card: CreditCard): number {
+  const month = new Date().toISOString().slice(0, 7);
+  return card.invoices?.find((item) => item.month === month)?.amount ?? card.currentInvoice;
 }

@@ -44,6 +44,7 @@ export type Account = {
   institution: string | null;
   kind: 'checking' | 'savings' | 'wallet';
   currentBalance: number;
+  origin?: 'manual' | 'open_finance';
 };
 
 export type CreditCard = {
@@ -54,6 +55,8 @@ export type CreditCard = {
   closingDay: number;
   dueDay: number;
   currentInvoice: number;
+  invoices?: { month: string; amount: number }[];
+  origin?: 'manual' | 'open_finance';
 };
 
 export type Debt = {
@@ -61,6 +64,9 @@ export type Debt = {
   creditor: string;
   remainingBalance: number;
   installmentAmount: number;
+  installmentCount?: number;
+  principalReceived?: number;
+  totalToPay?: number;
   dueDay: number;
 };
 
@@ -78,6 +84,13 @@ export type SafeToSpend = {
   openInstallments: number;
   available: number;
   asOf: string;
+};
+
+export type PluggyConnectResult = {
+  connectorName: string;
+  itemStatus: string;
+  accounts: number;
+  cards: number;
 };
 
 export function formatBRL(value: number): string {

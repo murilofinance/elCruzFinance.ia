@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useId, useRef, type ReactNode } from 'react';
-import { X } from '@phosphor-icons/react';
+import { FormEvent, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Plus, X } from '@phosphor-icons/react';
 import type { Account, CreditCard, Debt } from '../lib/api';
 
 export type AddTab = 'conta' | 'cartao' | 'emprestimo' | 'lancamento';
@@ -89,7 +89,7 @@ export function AddItemDialog({
               Adicionar
             </h2>
             <p className="mt-1 text-sm text-muted-fg">
-              Conta, cartão, empréstimo ou lançamento.
+              Conta, cartão com faturas por mês, empréstimo e lançamento.
             </p>
           </div>
           <button
@@ -145,274 +145,564 @@ export function AddItemDialog({
 
         <div className="mt-5">
           {tab === 'conta' ? (
-            <form
-              id={`${tabsId}-conta`}
-              role="tabpanel"
-              className="grid gap-3 sm:grid-cols-2"
-              onSubmit={(event) => {
-                const data = new FormData(event.currentTarget);
-                onSubmit(event, '/accounts', {
-                  name: String(data.get('name')),
-                  institution: String(data.get('institution')) || undefined,
-                  kind: String(data.get('kind')),
-                  currentBalance: Number(data.get('currentBalance')),
-                });
-              }}
-            >
-              <Field label="Nome">
-                <input name="name" required minLength={2} className={fieldClass} />
-              </Field>
-              <Field label="Banco / instituição">
-                <input name="institution" className={fieldClass} placeholder="Nubank" />
-              </Field>
-              <Field label="Tipo">
-                <select name="kind" className={fieldClass} defaultValue="checking">
-                  <option value="checking">Corrente</option>
-                  <option value="savings">Poupança</option>
-                  <option value="wallet">Carteira</option>
-                </select>
-              </Field>
-              <Field label="Saldo atual">
-                <input
-                  name="currentBalance"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  defaultValue={0}
-                  className={fieldClass}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Submit busy={busy} label="Salvar conta" />
-              </div>
-            </form>
+            <AccountForm
+              tabsId={tabsId}
+              busy={busy}
+              onSubmit={onSubmit}
+            />
           ) : null}
 
           {tab === 'cartao' ? (
-            <form
-              id={`${tabsId}-cartao`}
-              role="tabpanel"
-              className="grid gap-3 sm:grid-cols-2"
-              onSubmit={(event) => {
-                const data = new FormData(event.currentTarget);
-                onSubmit(event, '/cards', {
-                  name: String(data.get('name')),
-                  institution: String(data.get('institution')) || undefined,
-                  creditLimit: Number(data.get('creditLimit')),
-                  closingDay: Number(data.get('closingDay')),
-                  dueDay: Number(data.get('dueDay')),
-                  currentInvoice: Number(data.get('currentInvoice') || 0),
-                });
-              }}
-            >
-              <Field label="Nome">
-                <input name="name" required minLength={2} className={fieldClass} />
-              </Field>
-              <Field label="Bandeira / banco">
-                <input name="institution" className={fieldClass} />
-              </Field>
-              <Field label="Limite">
-                <input
-                  name="creditLimit"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Fatura aberta">
-                <input
-                  name="currentInvoice"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  defaultValue={0}
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Fecha dia">
-                <input
-                  name="closingDay"
-                  type="number"
-                  min={1}
-                  max={31}
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Vence dia">
-                <input
-                  name="dueDay"
-                  type="number"
-                  min={1}
-                  max={31}
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Submit busy={busy} label="Salvar cartão" />
-              </div>
-            </form>
+            <CardForm tabsId={tabsId} busy={busy} onSubmit={onSubmit} />
           ) : null}
 
           {tab === 'emprestimo' ? (
-            <form
-              id={`${tabsId}-emprestimo`}
-              role="tabpanel"
-              className="grid gap-3 sm:grid-cols-2"
-              onSubmit={(event) => {
-                const data = new FormData(event.currentTarget);
-                onSubmit(event, '/debts', {
-                  creditor: String(data.get('creditor')),
-                  remainingBalance: Number(data.get('remainingBalance')),
-                  installmentAmount: Number(data.get('installmentAmount')),
-                  dueDay: Number(data.get('dueDay')),
-                });
-              }}
-            >
-              <Field label="Credor">
-                <input name="creditor" required minLength={2} className={fieldClass} />
-              </Field>
-              <Field label="Saldo devedor">
-                <input
-                  name="remainingBalance"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Parcela">
-                <input
-                  name="installmentAmount"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Vence dia">
-                <input
-                  name="dueDay"
-                  type="number"
-                  min={1}
-                  max={31}
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Submit busy={busy} label="Salvar empréstimo" />
-              </div>
-            </form>
+            <DebtForm tabsId={tabsId} busy={busy} onSubmit={onSubmit} />
           ) : null}
 
           {tab === 'lancamento' ? (
-            <form
-              id={`${tabsId}-lancamento`}
-              role="tabpanel"
-              className="grid gap-3 sm:grid-cols-2"
-              onSubmit={(event) => {
-                const data = new FormData(event.currentTarget);
-                const lane = String(data.get('lane'));
-                const type =
-                  lane === 'account_expense' || lane === 'card_expense'
-                    ? 'expense'
-                    : lane;
-                onSubmit(event, '/transactions', {
-                  type,
-                  amount: Number(data.get('amount')),
-                  date: String(data.get('date')),
-                  description: String(data.get('description')),
-                  accountId:
-                    lane === 'card_expense'
-                      ? undefined
-                      : String(data.get('accountId')) || undefined,
-                  cardId:
-                    lane === 'account_expense' || lane === 'income'
-                      ? undefined
-                      : String(data.get('cardId')) || undefined,
-                  debtId:
-                    lane === 'debt_payment'
-                      ? String(data.get('debtId')) || undefined
-                      : undefined,
-                });
-              }}
-            >
-              <Field label="Tipo">
-                <select name="lane" className={fieldClass} defaultValue="account_expense">
-                  <option value="income">Entrada na conta</option>
-                  <option value="account_expense">Saída na conta / Pix</option>
-                  <option value="card_expense">Compra no cartão</option>
-                  <option value="card_payment">Pagar fatura</option>
-                  <option value="debt_payment">Pagar parcela</option>
-                </select>
-              </Field>
-              <Field label="Conta">
-                <select name="accountId" className={fieldClass} defaultValue="">
-                  <option value="">—</option>
-                  {accounts.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Cartão">
-                <select name="cardId" className={fieldClass} defaultValue="">
-                  <option value="">—</option>
-                  {cards.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Empréstimo">
-                <select name="debtId" className={fieldClass} defaultValue="">
-                  <option value="">—</option>
-                  {debts.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.creditor}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Descrição">
-                <input name="description" required minLength={2} className={fieldClass} />
-              </Field>
-              <Field label="Valor">
-                <input
-                  name="amount"
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  required
-                  className={fieldClass}
-                />
-              </Field>
-              <Field label="Data">
-                <input
-                  name="date"
-                  type="date"
-                  required
-                  defaultValue={today}
-                  className={fieldClass}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Submit busy={busy} label="Lançar" />
-              </div>
-            </form>
+            <TransactionForm
+              tabsId={tabsId}
+              busy={busy}
+              today={today}
+              accounts={accounts}
+              cards={cards}
+              debts={debts}
+              onSubmit={onSubmit}
+            />
           ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+function AccountForm({
+  tabsId,
+  busy,
+  onSubmit,
+}: {
+  tabsId: string;
+  busy: boolean;
+  onSubmit: AddItemDialogProps['onSubmit'];
+}) {
+  const [origin, setOrigin] = useState<'manual' | 'open_finance'>('manual');
+  const openFinance = origin === 'open_finance';
+
+  return (
+    <form
+      id={`${tabsId}-conta`}
+      role="tabpanel"
+      className="grid gap-3 sm:grid-cols-2"
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        if (openFinance) {
+          onSubmit(event, '/connections', {
+            clientId: String(data.get('clientId')).trim(),
+            clientSecret: String(data.get('clientSecret')).trim(),
+            itemId: String(data.get('itemId')).trim(),
+          });
+          return;
+        }
+        onSubmit(event, '/accounts', {
+          name: String(data.get('name')),
+          institution: String(data.get('institution')) || undefined,
+          kind: String(data.get('kind')),
+          currentBalance: Number(data.get('currentBalance')),
+        });
+      }}
+    >
+      <Field label="Origem">
+        <select
+          name="origin"
+          className={fieldClass}
+          value={origin}
+          onChange={(event) =>
+            setOrigin(event.target.value as 'manual' | 'open_finance')
+          }
+        >
+          <option value="manual">Manual</option>
+          <option value="open_finance">Open Finance (Pluggy)</option>
+        </select>
+      </Field>
+      {openFinance ? (
+        <>
+          <p className="sm:col-span-2 text-sm leading-6 text-muted-fg">
+            Cole o client_id, client_secret e o itemId da aplicação de
+            Development. O site só envia para a nossa API; o secret não volta na
+            tela.
+          </p>
+          <Field label="Client ID">
+            <input
+              name="clientId"
+              required
+              minLength={8}
+              autoComplete="off"
+              className={`${fieldClass} sm:col-span-2`}
+            />
+          </Field>
+          <Field label="Client secret">
+            <input
+              name="clientSecret"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Item ID">
+            <input
+              name="itemId"
+              required
+              minLength={8}
+              autoComplete="off"
+              className={fieldClass}
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Submit busy={busy} label="Conectar e puxar dados" />
+          </div>
+        </>
+      ) : (
+        <>
+          <Field label="Nome">
+            <input name="name" required minLength={2} className={fieldClass} />
+          </Field>
+          <Field label="Banco / instituição">
+            <input name="institution" className={fieldClass} placeholder="Nubank" />
+          </Field>
+          <Field label="Tipo">
+            <select name="kind" className={fieldClass} defaultValue="checking">
+              <option value="checking">Corrente</option>
+              <option value="savings">Poupança</option>
+              <option value="wallet">Carteira</option>
+            </select>
+          </Field>
+          <Field label="Saldo atual">
+            <input
+              name="currentBalance"
+              type="number"
+              min={0}
+              step="0.01"
+              required
+              defaultValue={0}
+              className={fieldClass}
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Submit busy={busy} label="Salvar conta" />
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
+function currentMonthValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, mon] = month.split('-').map(Number);
+  const date = new Date(year, mon - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function CardForm({
+  tabsId,
+  busy,
+  onSubmit,
+}: {
+  tabsId: string;
+  busy: boolean;
+  onSubmit: AddItemDialogProps['onSubmit'];
+}) {
+  const [invoices, setInvoices] = useState([{ month: currentMonthValue(), amount: '0' }]);
+
+  return (
+    <form
+      id={`${tabsId}-cartao`}
+      role="tabpanel"
+      className="grid gap-3 sm:grid-cols-2"
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        onSubmit(event, '/cards', {
+          name: String(data.get('name')),
+          institution: String(data.get('institution')) || undefined,
+          creditLimit: Number(data.get('creditLimit')),
+          closingDay: Number(data.get('closingDay')),
+          dueDay: Number(data.get('dueDay')),
+          invoices: invoices.map((item) => ({
+            month: item.month,
+            amount: Number(item.amount || 0),
+          })),
+        });
+      }}
+    >
+      <Field label="Nome">
+        <input name="name" required minLength={2} className={fieldClass} />
+      </Field>
+      <Field label="Bandeira / banco">
+        <input name="institution" className={fieldClass} placeholder="Nubank" />
+      </Field>
+      <Field label="Limite">
+        <input
+          name="creditLimit"
+          type="number"
+          min={0}
+          step="0.01"
+          required
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Fecha dia">
+        <input name="closingDay" type="number" min={1} max={31} required className={fieldClass} />
+      </Field>
+      <Field label="Vence dia">
+        <input name="dueDay" type="number" min={1} max={31} required className={fieldClass} />
+      </Field>
+      <div className="sm:col-span-2 grid gap-3 rounded-xl border border-white/10 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm">
+            Faturas por mês
+            <span className="mt-1 block text-muted-fg">
+              Mês atual, o seguinte, e assim por diante. Cada linha é o valor daquele ciclo.
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              setInvoices((rows) => [
+                ...rows,
+                {
+                  month: shiftMonth(rows[rows.length - 1]?.month ?? currentMonthValue(), 1),
+                  amount: '0',
+                },
+              ])
+            }
+            className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-200 hover:border-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Plus className="h-4 w-4" weight="bold" aria-hidden />
+            Mês
+          </button>
+        </div>
+        {invoices.map((row, index) => (
+          <div key={`${row.month}-${index}`} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <Field label={index === 0 ? 'Mês' : `Mês ${index + 1}`}>
+              <input
+                type="month"
+                required
+                value={row.month}
+                onChange={(event) =>
+                  setInvoices((rows) =>
+                    rows.map((item, i) =>
+                      i === index ? { ...item, month: event.target.value } : item,
+                    ),
+                  )
+                }
+                className={fieldClass}
+              />
+            </Field>
+            <Field label="Valor da fatura">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                required
+                value={row.amount}
+                onChange={(event) =>
+                  setInvoices((rows) =>
+                    rows.map((item, i) =>
+                      i === index ? { ...item, amount: event.target.value } : item,
+                    ),
+                  )
+                }
+                className={fieldClass}
+              />
+            </Field>
+            {invoices.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => setInvoices((rows) => rows.filter((_, i) => i !== index))}
+                className="mt-6 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-md border border-border text-sm transition-colors duration-200 hover:border-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Remover ${row.month}`}
+              >
+                <X className="h-4 w-4" weight="bold" aria-hidden />
+              </button>
+            ) : (
+              <span className="hidden sm:block" />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="sm:col-span-2">
+        <Submit busy={busy} label="Salvar cartão" />
+      </div>
+    </form>
+  );
+}
+
+function DebtForm({
+  tabsId,
+  busy,
+  onSubmit,
+}: {
+  tabsId: string;
+  busy: boolean;
+  onSubmit: AddItemDialogProps['onSubmit'];
+}) {
+  const [totalToPay, setTotalToPay] = useState('');
+  const [installmentCount, setInstallmentCount] = useState('12');
+  const [installmentAmount, setInstallmentAmount] = useState('');
+  const suggested = useMemo(() => {
+    const total = Number(totalToPay);
+    const count = Number(installmentCount);
+    if (!(total > 0) || !(count > 0)) {
+      return '';
+    }
+    return (Math.round((total / count) * 100) / 100).toFixed(2);
+  }, [totalToPay, installmentCount]);
+
+  return (
+    <form
+      id={`${tabsId}-emprestimo`}
+      role="tabpanel"
+      className="grid gap-3 sm:grid-cols-2"
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        const count = Number(data.get('installmentCount'));
+        const total = Number(data.get('totalToPay'));
+        const typed = Number(data.get('installmentAmount'));
+        onSubmit(event, '/debts', {
+          creditor: String(data.get('creditor')),
+          principalReceived: Number(data.get('principalReceived')),
+          totalToPay: total,
+          installmentCount: count,
+          installmentAmount: typed > 0 ? typed : count > 0 ? total / count : 0,
+          dueDay: Number(data.get('dueDay')),
+        });
+      }}
+    >
+      <Field label="Credor">
+        <input name="creditor" required minLength={2} className={fieldClass} placeholder="Nubank" />
+      </Field>
+      <Field label="Vence dia">
+        <input name="dueDay" type="number" min={1} max={31} required className={fieldClass} />
+      </Field>
+      <Field label="Valor recebido">
+        <input
+          name="principalReceived"
+          type="number"
+          min={0}
+          step="0.01"
+          required
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Valor a ser pago">
+        <input
+          name="totalToPay"
+          type="number"
+          min={0}
+          step="0.01"
+          required
+          value={totalToPay}
+          onChange={(event) => setTotalToPay(event.target.value)}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Quantidade de parcelas">
+        <input
+          name="installmentCount"
+          type="number"
+          min={1}
+          max={360}
+          required
+          value={installmentCount}
+          onChange={(event) => setInstallmentCount(event.target.value)}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Valor da parcela">
+        <input
+          name="installmentAmount"
+          type="number"
+          min={0}
+          step="0.01"
+          value={installmentAmount}
+          placeholder={suggested || '0'}
+          onChange={(event) => setInstallmentAmount(event.target.value)}
+          className={fieldClass}
+        />
+      </Field>
+      <p className="sm:col-span-2 text-sm text-muted-fg">
+        Se deixar a parcela em branco, usamos valor a ser pago ÷ quantidade.
+        {suggested ? ` Sugestão: R$ ${suggested.replace('.', ',')}.` : null}
+      </p>
+      <div className="sm:col-span-2">
+        <Submit busy={busy} label="Salvar empréstimo" />
+      </div>
+    </form>
+  );
+}
+
+const LANES = [
+  { id: 'income_salary', label: 'Salário', type: 'income', account: true },
+  { id: 'income_pix', label: 'Pix recebido', type: 'income', account: true },
+  { id: 'income_deposit', label: 'Depósito em espécie', type: 'income', account: true },
+  { id: 'income_cashback', label: 'Cashback / rendimento', type: 'income', account: true },
+  { id: 'income_refund', label: 'Estorno / reembolso', type: 'income', account: true },
+  { id: 'expense_pix', label: 'Pix enviado', type: 'expense', account: true },
+  { id: 'expense_ted', label: 'TED / DOC', type: 'expense', account: true },
+  { id: 'expense_boleto', label: 'Boleto', type: 'expense', account: true },
+  { id: 'expense_debit', label: 'Débito / saque', type: 'expense', account: true },
+  { id: 'expense_subscription', label: 'Assinatura', type: 'expense', account: true },
+  { id: 'expense_other', label: 'Outra saída na conta', type: 'expense', account: true },
+  { id: 'card_expense', label: 'Compra no crédito à vista', type: 'expense', card: true },
+  { id: 'card_installment', label: 'Compra parcelada no crédito', type: 'expense', card: true },
+  { id: 'card_payment', label: 'Pagar fatura do cartão', type: 'card_payment', account: true, card: true },
+  { id: 'debt_payment', label: 'Pagar parcela de empréstimo', type: 'debt_payment', account: true, debt: true },
+  { id: 'transfer', label: 'Transferência entre contas', type: 'transfer', account: true, toAccount: true },
+] as const;
+
+function TransactionForm({
+  tabsId,
+  busy,
+  today,
+  accounts,
+  cards,
+  debts,
+  onSubmit,
+}: {
+  tabsId: string;
+  busy: boolean;
+  today: string;
+  accounts: Account[];
+  cards: CreditCard[];
+  debts: Debt[];
+  onSubmit: AddItemDialogProps['onSubmit'];
+}) {
+  const [laneId, setLaneId] = useState<(typeof LANES)[number]['id']>('expense_pix');
+  const lane = LANES.find((item) => item.id === laneId) ?? LANES[0];
+
+  return (
+    <form
+      id={`${tabsId}-lancamento`}
+      role="tabpanel"
+      className="grid gap-3 sm:grid-cols-2"
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        const prefix = lane.label;
+        const description = String(data.get('description'));
+        onSubmit(event, '/transactions', {
+          type: lane.type,
+          amount: Number(data.get('amount')),
+          date: String(data.get('date')),
+          description: description.startsWith(prefix)
+            ? description
+            : `${prefix}: ${description}`,
+          accountId: 'account' in lane && lane.account
+            ? String(data.get('accountId')) || undefined
+            : undefined,
+          toAccountId: 'toAccount' in lane && lane.toAccount
+            ? String(data.get('toAccountId')) || undefined
+            : undefined,
+          cardId: 'card' in lane && lane.card
+            ? String(data.get('cardId')) || undefined
+            : undefined,
+          debtId: 'debt' in lane && lane.debt
+            ? String(data.get('debtId')) || undefined
+            : undefined,
+        });
+      }}
+    >
+      <Field label="Tipo">
+        <select
+          name="lane"
+          className={fieldClass}
+          value={laneId}
+          onChange={(event) =>
+            setLaneId(event.target.value as (typeof LANES)[number]['id'])
+          }
+        >
+          {LANES.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {'account' in lane && lane.account ? (
+        <Field label={'toAccount' in lane && lane.toAccount ? 'Conta de origem' : 'Conta'}>
+          <select name="accountId" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Escolha
+            </option>
+            {accounts.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {'toAccount' in lane && lane.toAccount ? (
+        <Field label="Conta de destino">
+          <select name="toAccountId" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Escolha
+            </option>
+            {accounts.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {'card' in lane && lane.card ? (
+        <Field label="Cartão">
+          <select name="cardId" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Escolha
+            </option>
+            {cards.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {'debt' in lane && lane.debt ? (
+        <Field label="Empréstimo">
+          <select name="debtId" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Escolha
+            </option>
+            {debts.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.creditor}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      <Field label="Descrição">
+        <input name="description" required minLength={2} className={fieldClass} />
+      </Field>
+      <Field label="Valor">
+        <input name="amount" type="number" min={0.01} step="0.01" required className={fieldClass} />
+      </Field>
+      <Field label="Data">
+        <input name="date" type="date" required defaultValue={today} className={fieldClass} />
+      </Field>
+      <div className="sm:col-span-2">
+        <Submit busy={busy} label="Lançar" />
+      </div>
+    </form>
   );
 }
 

@@ -15,6 +15,7 @@ import {
   type Account,
   type CreditCard,
   type Debt,
+  type PluggyConnectResult,
   type SafeToSpend,
 } from '../lib/api';
 
@@ -93,9 +94,18 @@ export function HomePage() {
     setBusy(true);
     setError(null);
     try {
-      await apiFetch(path, { method: 'POST', body });
+      const result = await apiFetch<PluggyConnectResult>(path, {
+        method: 'POST',
+        body,
+      });
       setAddOpen(false);
-      setNotice('Item adicionado.');
+      if (path === '/connections') {
+        setNotice(
+          `${result.connectorName}: ${result.accounts} conta(s) e ${result.cards} cartão(ões) sincronizados.`,
+        );
+      } else {
+        setNotice('Item adicionado.');
+      }
       await reload();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar');
@@ -105,8 +115,13 @@ export function HomePage() {
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
   const cash = accounts.reduce((sum, item) => sum + item.currentBalance, 0);
-  const invoices = cards.reduce((sum, item) => sum + item.currentInvoice, 0);
+  const invoices = cards.reduce((sum, item) => {
+    const billed =
+      item.invoices?.find((row) => row.month === month)?.amount ?? item.currentInvoice;
+    return sum + billed;
+  }, 0);
   const owed = debts.reduce((sum, item) => sum + item.remainingBalance, 0);
   const hasRealData = accounts.length > 0 || cards.length > 0 || debts.length > 0;
   const cardLimit = cards.reduce((sum, item) => sum + item.creditLimit, 0);
@@ -184,7 +199,10 @@ export function HomePage() {
             items={accounts.map((item) => ({
               id: item.id,
               name: item.name,
-              detail: item.institution,
+              detail:
+                item.origin === 'open_finance'
+                  ? `${item.institution ?? 'Open Finance'} · OF`
+                  : item.institution,
               value: formatBRL(item.currentBalance),
             }))}
           />
@@ -207,8 +225,16 @@ export function HomePage() {
             items={cards.map((item) => ({
               id: item.id,
               name: item.name,
-              detail: item.institution,
-              value: formatBRL(item.currentInvoice),
+              detail:
+                item.origin === 'open_finance'
+                  ? `${item.institution ?? 'Open Finance'} · OF`
+                  : item.invoices && item.invoices.length > 1
+                    ? `${item.invoices.length} faturas`
+                    : item.institution,
+              value: formatBRL(
+                item.invoices?.find((row) => row.month === month)?.amount ??
+                  item.currentInvoice,
+              ),
             }))}
           />
           <KpiCard
@@ -221,6 +247,9 @@ export function HomePage() {
             items={debts.map((item) => ({
               id: item.id,
               name: item.creditor,
+              detail: item.installmentCount
+                ? `${item.installmentCount}x ${formatBRL(item.installmentAmount)}`
+                : null,
               value: formatBRL(item.remainingBalance),
             }))}
           />

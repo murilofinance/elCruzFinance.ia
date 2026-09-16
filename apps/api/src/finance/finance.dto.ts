@@ -1,13 +1,18 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 export class CreateAccountDto {
@@ -59,10 +64,22 @@ export class CreateCardDto {
   dueDay!: number;
 
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @ValidateNested({ each: true })
+  @Type(() => CardInvoiceMonthDto)
+  invoices?: CardInvoiceMonthDto[];
+}
+
+export class CardInvoiceMonthDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}$/)
+  month!: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  currentInvoice?: number;
+  amount!: number;
 }
 
 export class CreateDebtDto {
@@ -74,7 +91,18 @@ export class CreateDebtDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  remainingBalance!: number;
+  principalReceived!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalToPay!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(360)
+  installmentCount!: number;
 
   @Type(() => Number)
   @IsNumber()
@@ -119,5 +147,26 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsString()
+  toAccountId?: string;
+
+  @IsOptional()
+  @IsString()
   categoryId?: string;
+}
+
+export class ConnectOpenFinanceDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(80)
+  clientId!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  clientSecret!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(80)
+  itemId!: string;
 }

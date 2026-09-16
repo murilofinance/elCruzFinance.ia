@@ -8,6 +8,7 @@ export type Account = {
   currency: 'BRL';
   currentBalance: number;
   origin: 'manual' | 'open_finance';
+  externalId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -20,7 +21,9 @@ export type CreditCard = {
   closingDay: number;
   dueDay: number;
   currentInvoice: number;
+  invoices: { month: string; amount: number }[];
   origin: 'manual' | 'open_finance';
+  externalId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -28,6 +31,9 @@ export type CreditCard = {
 export type Debt = {
   id: string;
   creditor: string;
+  principalReceived: number;
+  totalToPay: number;
+  installmentCount: number;
   remainingBalance: number;
   installmentAmount: number;
   dueDay: number;
@@ -51,6 +57,7 @@ export type LedgerTransaction = {
   accountId: string | null;
   cardId: string | null;
   debtId: string | null;
+  toAccountId: string | null;
   categoryId: string | null;
   source: 'manual' | 'open_finance' | 'ocr' | 'import';
   status: 'draft' | 'confirmed' | 'ignored';
