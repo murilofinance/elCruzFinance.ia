@@ -1,0 +1,13 @@
+---
+description: After every system change, create a git commit and push to origin.
+alwaysApply: true
+---
+
+# Commit e push a cada alteração
+
+Depois de qualquer mudança no sistema (código, UI, API, regras), faça **commit e push** sem esperar o usuário pedir de novo.
+
+- Não commitar segredos (`.env`, JSON de service account) nem arquivos soltos irrelevantes (`*.jpg` na raiz).
+- Mensagem de commit curta, em inglês, focada no porquê.
+- `git push` para `origin` na branch atual.
+- Não usar `--no-verify`, force push, nem alterar git config.

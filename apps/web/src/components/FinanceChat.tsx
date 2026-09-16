@@ -15,7 +15,7 @@ export function FinanceChat() {
     {
       role: 'assistant',
       content:
-        'Pergunte sobre faturas, cartões, bancos ou o que vence. Eu leio só os seus dados da Overview.',
+        'Pergunte o que vence, faturas ou bancos. Se o Gemini estiver ocupado, eu respondo com os dados do sistema.',
     },
   ]);
   const [draft, setDraft] = useState('');
@@ -58,7 +58,7 @@ export function FinanceChat() {
         Assistente
       </p>
       <p className="mt-1 text-sm text-muted-fg">
-        Gemini lê o dashboard, extrato e vencimentos. A chave fica só na API.
+        Responde com vencimentos, faturas e extrato. Se o Gemini lotar, usa os dados da Overview.
       </p>
       <ul className="mt-4 flex max-h-56 flex-1 flex-col gap-3 overflow-y-auto text-sm">
         {turns.map((turn, index) => (

@@ -1,15 +1,16 @@
 import {
   BadRequestException,
   Injectable,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { FinanceService } from '../finance/finance.service';
 import type { AiChatDto } from './ai.dto';
+import { localAdvisorReply, type AdvisorSnapshot } from './ai.local';
 
 const MODELS = [
-  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-2.0-flash',
-  'gemini-flash-latest',
+  'gemini-2.5-flash',
 ];
 
 const SYSTEM_PROMPT = `Você é o assistente financeiro do ElCruz Finance.
@@ -25,7 +26,7 @@ type GeminiResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
-  error?: { message?: string };
+  error?: { message?: string; status?: string };
 };
 
 @Injectable()
@@ -37,14 +38,20 @@ export class AiService {
   }
 
   async chat(uid: string, dto: AiChatDto) {
+    const snapshot = (await this.finance.advisorContext(
+      uid,
+    )) as AdvisorSnapshot;
+    const local = localAdvisorReply(dto.message.trim(), snapshot);
     const key = process.env.GEMINI_API_KEY?.trim();
     if (!key) {
+      if (local) {
+        return { reply: local, model: 'local' };
+      }
       throw new BadRequestException(
         'IA ainda não configurada. Coloque GEMINI_API_KEY na API (Vercel).',
       );
     }
 
-    const snapshot = await this.finance.advisorContext(uid);
     const contents = [
       ...(dto.history ?? []).map((turn) => ({
         role: turn.role === 'assistant' ? 'model' : 'user',
@@ -60,18 +67,21 @@ export class AiService {
       },
     ];
 
-    let lastError = 'Gemini indisponível.';
     for (const model of MODELS) {
-      try {
-        const reply = await generateContent(key, model, contents);
-        if (reply) {
-          return { reply, model };
-        }
-      } catch (err: unknown) {
-        lastError = err instanceof Error ? err.message : lastError;
+      const reply = await generateContent(key, model, contents);
+      if (reply) {
+        return { reply, model };
       }
     }
-    throw new ServiceUnavailableException(lastError);
+
+    if (local) {
+      return { reply: local, model: 'local' };
+    }
+    return {
+      reply:
+        'O Gemini está ocupado agora. Olhe Próximos pagamentos ao lado, ou tente de novo em instantes.',
+      model: 'local',
+    };
   }
 }
 
@@ -79,30 +89,47 @@ async function generateContent(
   key: string,
   model: string,
   contents: unknown,
-): Promise<string> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents,
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 512,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 512,
+            },
+          }),
+          signal: AbortSignal.timeout(12000),
         },
-      }),
-      signal: AbortSignal.timeout(18000),
-    },
-  );
-  const payload = (await response.json()) as GeminiResponse;
-  if (!response.ok) {
-    throw new Error(payload.error?.message ?? `Gemini ${response.status}`);
+      );
+      const payload = (await response.json()) as GeminiResponse;
+      if (response.status === 429 || response.status === 503) {
+        await wait(400 * (attempt + 1));
+        continue;
+      }
+      if (!response.ok) {
+        return null;
+      }
+      const text = payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text ?? '')
+        .join('')
+        .trim();
+      return text || null;
+    } catch {
+      await wait(400 * (attempt + 1));
+    }
   }
-  const text = payload.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text ?? '')
-    .join('')
-    .trim();
-  return text ?? '';
+  return null;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
