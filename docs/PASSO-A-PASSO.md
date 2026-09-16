@@ -177,7 +177,7 @@ Na Vercel há **dois projetos** no mesmo GitHub:
 
 | Projeto | Root Directory | O que sobe |
 |---|---|---|
-| Site (`el-cruz-finance-ia`) | vazio (raiz do repositório) | Telas em `/` |
+| Site (`el-cruz-finance-ia-web`) | `apps/web` | Login e telas |
 | API (`el-cruz-finance-ia-api`) | `apps/api` | NestJS em `/api/health`, `/api/me` |
 
 1. No projeto da **API**: Settings → General → Root Directory = `apps/api`. Framework: Other. Variáveis de `apps/api/.env`:
