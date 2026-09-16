@@ -8,9 +8,18 @@
   "scripts": {
     "dev:api": "npm run start:dev --workspace=api",
     "dev:web": "npm run dev --workspace=web",
-    "build": "npm run build --workspace=api && npm exec --workspace=web -- vite build",
+    "build": "npm run build --workspace=api && npm run build --workspace=web",
     "build:api": "npm run build --workspace=api",
-    "build:web": "npm exec --workspace=web -- vite build"
+    "build:web": "npm run build --workspace=web"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@vitejs/plugin-react": "^5.0.3",
+    "tailwindcss": "^4.1.13",
+    "vite": "7.3.6"
+  },
+  "overrides": {
+    "vite": "7.3.6"
   },
   "engines": {
     "node": ">=20"

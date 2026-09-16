@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm exec vite -- build",
+    "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "preview": "vite preview"
   },
@@ -18,7 +18,7 @@
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.1",
     "tailwindcss": "^4.1.13",
-    "vite": "^7.1.7"
+    "vite": "7.3.6"
   },
   "devDependencies": {
     "@types/react": "^19.1.13",

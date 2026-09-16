@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install",
-  "buildCommand": "npm run build --workspace=api && npm exec --workspace=web -- vite build",
+  "installCommand": "NPM_CONFIG_PRODUCTION=false npm install",
+  "buildCommand": "npm run build --workspace=api && npm run build --workspace=web",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
