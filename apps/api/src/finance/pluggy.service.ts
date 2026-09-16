@@ -40,10 +40,23 @@ type ItemResponse = {
   connector?: { name?: string | null } | null;
 };
 
+export type PluggyInvestment = {
+  id: string;
+  name?: string | null;
+  type?: string | null;
+  code?: string | null;
+  balance?: number | null;
+  value?: number | null;
+  amount?: number | null;
+};
+
+type InvestmentsResponse = { results?: PluggyInvestment[] };
+
 export type PluggySnapshot = {
   connectorName: string;
   itemStatus: string;
   accounts: PluggyAccount[];
+  investments: PluggyInvestment[];
   transactions: PluggyTransaction[];
 };
 
@@ -71,10 +84,22 @@ export class PluggyService {
       transactions.push(...page);
     }
 
+    let investments: PluggyInvestment[] = [];
+    try {
+      const payload = await this.request<InvestmentsResponse>(
+        `/investments?itemId=${encodeURIComponent(input.itemId)}`,
+        apiKey,
+      );
+      investments = payload.results ?? [];
+    } catch {
+      investments = [];
+    }
+
     return {
       connectorName: item.connector?.name?.trim() || 'Open Finance',
       itemStatus: item.status ?? 'UNKNOWN',
       accounts: remoteAccounts,
+      investments,
       transactions,
     };
   }

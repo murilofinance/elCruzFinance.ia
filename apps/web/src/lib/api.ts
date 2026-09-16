@@ -68,6 +68,16 @@ export type Debt = {
   principalReceived?: number;
   totalToPay?: number;
   dueDay: number;
+  kind?: 'loan' | 'bill';
+};
+
+export type Investment = {
+  id: string;
+  name: string;
+  institution: string | null;
+  kind: 'fixed' | 'funds' | 'stocks' | 'crypto' | 'other';
+  currentValue: number;
+  origin?: 'manual' | 'open_finance';
 };
 
 export type LedgerTransaction = {
@@ -79,6 +89,28 @@ export type LedgerTransaction = {
   accountId?: string | null;
   cardId?: string | null;
   source?: 'manual' | 'open_finance' | 'ocr' | 'import';
+};
+
+export type ProjectionItem = {
+  id: string;
+  kind: 'card' | 'debt' | 'bill';
+  title: string;
+  detail: string;
+  amount: number;
+  dueDate: string;
+  overdue: boolean;
+};
+
+export type ProjectionBoard = {
+  asOf: string;
+  totalDue: number;
+  items: ProjectionItem[];
+  headline: string;
+};
+
+export type AiChatResponse = {
+  reply: string;
+  model?: string;
 };
 
 export type PluggyConnection = {
@@ -102,6 +134,7 @@ export type PluggyConnectResult = {
   itemStatus?: string;
   accounts: number;
   cards: number;
+  investments?: number;
   transactions?: number;
 };
 

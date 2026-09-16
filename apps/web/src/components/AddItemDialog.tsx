@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useId, useMemo, useRef, useState, type ReactNode 
 import { Plus, X } from '@phosphor-icons/react';
 import type { Account, CreditCard, Debt } from '../lib/api';
 
-export type AddTab = 'conta' | 'cartao' | 'emprestimo' | 'lancamento';
+export type AddTab = 'conta' | 'cartao' | 'emprestimo' | 'investimento' | 'lancamento';
 
 const fieldClass =
   'h-12 w-full rounded-md border border-border bg-black/40 px-3 text-foreground outline-none ring-ring transition-colors duration-200 focus-visible:ring-2';
@@ -89,7 +89,7 @@ export function AddItemDialog({
               Adicionar
             </h2>
             <p className="mt-1 text-sm text-muted-fg">
-              Conta, cartão com faturas por mês, empréstimo e lançamento.
+              Conta, cartão, empréstimo, investimento, boleto parcelado e lançamento.
             </p>
           </div>
           <button
@@ -112,6 +112,7 @@ export function AddItemDialog({
               ['conta', 'Conta'],
               ['cartao', 'Cartão'],
               ['emprestimo', 'Empréstimo'],
+              ['investimento', 'Investimento'],
               ['lancamento', 'Lançamento'],
             ] as const
           ).map(([id, label]) => {
@@ -160,6 +161,10 @@ export function AddItemDialog({
             <DebtForm tabsId={tabsId} busy={busy} onSubmit={onSubmit} />
           ) : null}
 
+          {tab === 'investimento' ? (
+            <InvestmentForm tabsId={tabsId} busy={busy} onSubmit={onSubmit} />
+          ) : null}
+
           {tab === 'lancamento' ? (
             <TransactionForm
               tabsId={tabsId}
@@ -198,8 +203,6 @@ function AccountForm({
         const data = new FormData(event.currentTarget);
         if (openFinance) {
           onSubmit(event, '/connections', {
-            clientId: String(data.get('clientId')).trim(),
-            clientSecret: String(data.get('clientSecret')).trim(),
             itemId: String(data.get('itemId')).trim(),
           });
           return;
@@ -228,35 +231,17 @@ function AccountForm({
       {openFinance ? (
         <>
           <p className="sm:col-span-2 text-sm leading-6 text-muted-fg">
-            Cole client_id, client_secret e o itemId. Outro banco = outro itemId
-            nesta mesma tela. Conta nova no mesmo banco: use Sincronizar no
-            Overview, sem colar de novo.
+            Client ID e secret já estão na API. Cole só o itemId do Demo da
+            Pluggy. Outro banco = outro itemId. Conta nova no mesmo banco: use
+            Sincronizar no Overview.
           </p>
-          <Field label="Client ID">
-            <input
-              name="clientId"
-              required
-              minLength={8}
-              autoComplete="off"
-              className={`${fieldClass} sm:col-span-2`}
-            />
-          </Field>
-          <Field label="Client secret">
-            <input
-              name="clientSecret"
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              className={fieldClass}
-            />
-          </Field>
           <Field label="Item ID">
             <input
               name="itemId"
               required
               minLength={8}
               autoComplete="off"
+              placeholder="Cole o itemId da conexão"
               className={fieldClass}
             />
           </Field>
@@ -477,6 +462,7 @@ function DebtForm({
         const typed = Number(data.get('installmentAmount'));
         onSubmit(event, '/debts', {
           creditor: String(data.get('creditor')),
+          kind: 'loan',
           principalReceived: Number(data.get('principalReceived')),
           totalToPay: total,
           installmentCount: count,
@@ -548,6 +534,66 @@ function DebtForm({
   );
 }
 
+function InvestmentForm({
+  tabsId,
+  busy,
+  onSubmit,
+}: {
+  tabsId: string;
+  busy: boolean;
+  onSubmit: AddItemDialogProps['onSubmit'];
+}) {
+  return (
+    <form
+      id={`${tabsId}-investimento`}
+      role="tabpanel"
+      className="grid gap-3 sm:grid-cols-2"
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        onSubmit(event, '/investments', {
+          name: String(data.get('name')),
+          institution: String(data.get('institution')) || undefined,
+          kind: String(data.get('kind')),
+          currentValue: Number(data.get('currentValue')),
+        });
+      }}
+    >
+      <Field label="Nome">
+        <input name="name" required minLength={2} className={fieldClass} placeholder="Tesouro Selic" />
+      </Field>
+      <Field label="Instituição">
+        <input name="institution" className={fieldClass} placeholder="Nubank" />
+      </Field>
+      <Field label="Tipo">
+        <select name="kind" className={fieldClass} defaultValue="fixed">
+          <option value="fixed">Renda fixa</option>
+          <option value="funds">Fundos</option>
+          <option value="stocks">Ações</option>
+          <option value="crypto">Cripto</option>
+          <option value="other">Outro</option>
+        </select>
+      </Field>
+      <Field label="Valor atual">
+        <input
+          name="currentValue"
+          type="number"
+          min={0}
+          step="0.01"
+          required
+          defaultValue={0}
+          className={fieldClass}
+        />
+      </Field>
+      <p className="sm:col-span-2 text-sm text-muted-fg">
+        Entra no total de investimentos. Não mistura com o disponível seguro (caixa).
+      </p>
+      <div className="sm:col-span-2">
+        <Submit busy={busy} label="Salvar investimento" />
+      </div>
+    </form>
+  );
+}
+
 const LANES = [
   { id: 'income_salary', label: 'Salário', type: 'income', account: true },
   { id: 'income_pix', label: 'Pix recebido', type: 'income', account: true },
@@ -556,7 +602,9 @@ const LANES = [
   { id: 'income_refund', label: 'Estorno / reembolso', type: 'income', account: true },
   { id: 'expense_pix', label: 'Pix enviado', type: 'expense', account: true },
   { id: 'expense_ted', label: 'TED / DOC', type: 'expense', account: true },
-  { id: 'expense_boleto', label: 'Boleto', type: 'expense', account: true },
+  { id: 'expense_boleto', label: 'Boleto à vista', type: 'expense', account: true },
+  { id: 'bill_plan', label: 'Boleto parcelado', type: 'bill_plan', billPlan: true },
+  { id: 'bill_payment', label: 'Pagar boleto parcelado', type: 'debt_payment', account: true, bill: true },
   { id: 'expense_debit', label: 'Débito / saque', type: 'expense', account: true },
   { id: 'expense_subscription', label: 'Assinatura', type: 'expense', account: true },
   { id: 'expense_other', label: 'Outra saída na conta', type: 'expense', account: true },
@@ -594,6 +642,21 @@ function TransactionForm({
       className="grid gap-3 sm:grid-cols-2"
       onSubmit={(event) => {
         const data = new FormData(event.currentTarget);
+        if (lane.id === 'bill_plan') {
+          const count = Number(data.get('installmentCount'));
+          const amount = Number(data.get('amount'));
+          const description = String(data.get('description')).trim();
+          onSubmit(event, '/debts', {
+            creditor: description,
+            kind: 'bill',
+            principalReceived: 0,
+            installmentCount: count,
+            installmentAmount: amount,
+            totalToPay: Math.round(amount * count * 100) / 100,
+            dueDay: Number(data.get('dueDay')),
+          });
+          return;
+        }
         const prefix = lane.label;
         const description = String(data.get('description'));
         onSubmit(event, '/transactions', {
@@ -612,9 +675,10 @@ function TransactionForm({
           cardId: 'card' in lane && lane.card
             ? String(data.get('cardId')) || undefined
             : undefined,
-          debtId: 'debt' in lane && lane.debt
-            ? String(data.get('debtId')) || undefined
-            : undefined,
+          debtId:
+            ('debt' in lane && lane.debt) || ('bill' in lane && lane.bill)
+              ? String(data.get('debtId')) || undefined
+              : undefined,
         });
       }}
     >
@@ -682,7 +746,9 @@ function TransactionForm({
             <option value="" disabled>
               Escolha
             </option>
-            {debts.map((item) => (
+            {debts
+              .filter((item) => item.kind !== 'bill')
+              .map((item) => (
               <option key={item.id} value={item.id}>
                 {item.creditor}
               </option>
@@ -690,17 +756,75 @@ function TransactionForm({
           </select>
         </Field>
       ) : null}
-      <Field label="Descrição">
-        <input name="description" required minLength={2} className={fieldClass} />
+      {'bill' in lane && lane.bill ? (
+        <Field label="Boleto parcelado">
+          <select name="debtId" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Escolha
+            </option>
+            {debts
+              .filter((item) => item.kind === 'bill')
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.creditor} · {item.installmentCount ?? 0}x {item.installmentAmount}
+                </option>
+              ))}
+          </select>
+        </Field>
+      ) : null}
+      {'billPlan' in lane && lane.billPlan ? (
+        <>
+          <Field label="Quantidade de parcelas">
+            <input
+              name="installmentCount"
+              type="number"
+              min={1}
+              max={360}
+              required
+              defaultValue={6}
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Vence todo dia">
+            <input
+              name="dueDay"
+              type="number"
+              min={1}
+              max={31}
+              required
+              defaultValue={30}
+              className={fieldClass}
+            />
+          </Field>
+        </>
+      ) : null}
+      <Field label={'billPlan' in lane && lane.billPlan ? 'Nome da conta (ex.: Dentista)' : 'Descrição'}>
+        <input
+          name="description"
+          required
+          minLength={2}
+          className={fieldClass}
+          placeholder={'billPlan' in lane && lane.billPlan ? 'Dentista' : undefined}
+        />
       </Field>
-      <Field label="Valor">
+      <Field label={'billPlan' in lane && lane.billPlan ? 'Valor da parcela' : 'Valor'}>
         <input name="amount" type="number" min={0.01} step="0.01" required className={fieldClass} />
       </Field>
-      <Field label="Data">
-        <input name="date" type="date" required defaultValue={today} className={fieldClass} />
-      </Field>
+      {'billPlan' in lane && lane.billPlan ? (
+        <p className="sm:col-span-2 text-sm text-muted-fg">
+          Exemplo: 6x de R$ 365 todo dia 30. Isso cria a conta a pagar e entra nas
+          projeções. O caixa só baixa quando você usar “Pagar boleto parcelado”.
+        </p>
+      ) : (
+        <Field label="Data">
+          <input name="date" type="date" required defaultValue={today} className={fieldClass} />
+        </Field>
+      )}
       <div className="sm:col-span-2">
-        <Submit busy={busy} label="Lançar" />
+        <Submit
+          busy={busy}
+          label={lane.id === 'bill_plan' ? 'Criar boleto parcelado' : 'Lançar'}
+        />
       </div>
     </form>
   );

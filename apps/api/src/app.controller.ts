@@ -19,6 +19,7 @@ export class AppController {
           process.env.PLUGGY_CLIENT_SECRET &&
           process.env.PLUGGY_ITEM_ID,
       ),
+      gemini: Boolean(process.env.GEMINI_API_KEY),
     };
   }
 }

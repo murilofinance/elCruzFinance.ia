@@ -31,12 +31,25 @@ export type CreditCard = {
 export type Debt = {
   id: string;
   creditor: string;
+  kind: 'loan' | 'bill';
   principalReceived: number;
   totalToPay: number;
   installmentCount: number;
   remainingBalance: number;
   installmentAmount: number;
   dueDay: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Investment = {
+  id: string;
+  name: string;
+  institution: string | null;
+  kind: 'fixed' | 'funds' | 'stocks' | 'crypto' | 'other';
+  currentValue: number;
+  origin: 'manual' | 'open_finance';
+  externalId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -70,6 +83,23 @@ export type Category = {
   name: string;
   kind: 'income' | 'expense';
   seeded: boolean;
+};
+
+export type ProjectionItem = {
+  id: string;
+  kind: 'card' | 'debt' | 'bill';
+  title: string;
+  detail: string;
+  amount: number;
+  dueDate: string;
+  overdue: boolean;
+};
+
+export type ProjectionBoard = {
+  asOf: string;
+  totalDue: number;
+  items: ProjectionItem[];
+  headline: string;
 };
 
 export const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [

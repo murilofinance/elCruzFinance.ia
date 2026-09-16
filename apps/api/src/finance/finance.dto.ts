@@ -88,10 +88,15 @@ export class CreateDebtDto {
   @MaxLength(80)
   creditor!: string;
 
+  @IsOptional()
+  @IsIn(['loan', 'bill'])
+  kind?: 'loan' | 'bill';
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  principalReceived!: number;
+  principalReceived?: number;
 
   @Type(() => Number)
   @IsNumber()
@@ -154,16 +159,38 @@ export class CreateTransactionDto {
   categoryId?: string;
 }
 
+export class CreateInvestmentDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  institution?: string;
+
+  @IsIn(['fixed', 'funds', 'stocks', 'crypto', 'other'])
+  kind!: 'fixed' | 'funds' | 'stocks' | 'crypto' | 'other';
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  currentValue!: number;
+}
+
 export class ConnectOpenFinanceDto {
+  @IsOptional()
   @IsString()
   @MinLength(8)
   @MaxLength(80)
-  clientId!: string;
+  clientId?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(8)
   @MaxLength(200)
-  clientSecret!: string;
+  clientSecret?: string;
 
   @IsString()
   @MinLength(8)

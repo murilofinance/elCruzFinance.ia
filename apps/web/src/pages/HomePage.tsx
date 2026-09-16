@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState, type ReactNode } from 'rea
 import {
   ArrowsClockwise,
   Bank,
+  ChartLineUp,
   CreditCard as CardIcon,
   Handshake,
   Plus,
@@ -9,6 +10,9 @@ import {
 } from '@phosphor-icons/react';
 import { AddItemDialog, type AddTab } from '../components/AddItemDialog';
 import { BalanceChart } from '../components/BalanceChart';
+import { FinanceChat } from '../components/FinanceChat';
+import { ItemDetailDialog, type DetailTarget } from '../components/ItemDetailDialog';
+import { ProjectionsPanel } from '../components/ProjectionsPanel';
 import { useAuth } from '../auth/AuthProvider';
 import {
   apiFetch,
@@ -16,11 +20,14 @@ import {
   type Account,
   type CreditCard,
   type Debt,
+  type Investment,
   type LedgerTransaction,
   type PluggyConnectResult,
   type PluggyConnection,
+  type ProjectionBoard,
   type SafeToSpend,
 } from '../lib/api';
+import { historySourceTag } from '../lib/labels';
 
 const ZERO_SAFE: SafeToSpend = {
   cash: 0,
@@ -28,6 +35,13 @@ const ZERO_SAFE: SafeToSpend = {
   openInstallments: 0,
   available: 0,
   asOf: new Date().toISOString(),
+};
+
+const EMPTY_PROJECTIONS: ProjectionBoard = {
+  asOf: new Date().toISOString().slice(0, 10),
+  totalDue: 0,
+  items: [],
+  headline: 'Nenhum vencimento de fatura ou parcela à vista.',
 };
 
 export function HomePage() {
@@ -38,8 +52,11 @@ export function HomePage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
   const [connections, setConnections] = useState<PluggyConnection[]>([]);
+  const [projections, setProjections] = useState<ProjectionBoard>(EMPTY_PROJECTIONS);
+  const [detail, setDetail] = useState<DetailTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [apiDown, setApiDown] = useState(false);
@@ -47,21 +64,34 @@ export function HomePage() {
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
-    const [nextSafe, nextAccounts, nextCards, nextDebts, nextTx, nextConnections] =
+    const [
+      nextSafe,
+      nextAccounts,
+      nextCards,
+      nextDebts,
+      nextInvestments,
+      nextTx,
+      nextConnections,
+      nextProj,
+    ] =
       await Promise.all([
         loadOr('/safe-to-spend', ZERO_SAFE),
         loadOr<Account[]>('/accounts', []),
         loadOr<CreditCard[]>('/cards', []),
         loadOr<Debt[]>('/debts', []),
+        loadOr<Investment[]>('/investments', []),
         loadOr<LedgerTransaction[]>('/transactions', []),
         loadOr<PluggyConnection[]>('/connections', []),
+        loadOr<ProjectionBoard>('/ai/projections', EMPTY_PROJECTIONS),
       ]);
     setSafe(nextSafe);
     setAccounts(nextAccounts);
     setCards(nextCards);
     setDebts(nextDebts);
+    setInvestments(nextInvestments);
     setTransactions(nextTx);
     setConnections(nextConnections);
+    setProjections(nextProj);
   }, []);
 
   useEffect(() => {
@@ -98,7 +128,7 @@ export function HomePage() {
         body: {},
       });
       setNotice(
-        `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões) e ${result.transactions ?? 0} transação(ões).`,
+        `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões), ${result.investments ?? 0} investimento(s) e ${result.transactions ?? 0} transação(ões).`,
       );
       await reload();
     } catch (err: unknown) {
@@ -130,7 +160,7 @@ export function HomePage() {
       setAddOpen(false);
       if (path === '/connections') {
         setNotice(
-          `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões) e ${result.transactions ?? 0} transação(ões).`,
+          `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões), ${result.investments ?? 0} investimento(s) e ${result.transactions ?? 0} transação(ões).`,
         );
       } else {
         setNotice('Item adicionado.');
@@ -152,10 +182,21 @@ export function HomePage() {
     return sum + billed;
   }, 0);
   const owed = debts.reduce((sum, item) => sum + item.remainingBalance, 0);
-  const hasRealData = accounts.length > 0 || cards.length > 0 || debts.length > 0;
-  const cardLimit = cards.reduce((sum, item) => sum + item.creditLimit, 0);
+  const invested = investments.reduce((sum, item) => sum + item.currentValue, 0);
+  const hasRealData =
+    accounts.length > 0 ||
+    cards.length > 0 ||
+    debts.length > 0 ||
+    investments.length > 0;
+  const invoicedWithLimit = cards.filter((item) => item.creditLimit > 0);
+  const cardLimit = invoicedWithLimit.reduce((sum, item) => sum + item.creditLimit, 0);
+  const usedOnLimit = invoicedWithLimit.reduce((sum, item) => {
+    const billed =
+      item.invoices?.find((row) => row.month === month)?.amount ?? item.currentInvoice;
+    return sum + billed;
+  }, 0);
   const usedPct =
-    cardLimit > 0 ? Math.min(100, Math.round((invoices / cardLimit) * 100)) : 0;
+    cardLimit > 0 ? Math.min(100, Math.round((usedOnLimit / cardLimit) * 100)) : 0;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -228,7 +269,7 @@ export function HomePage() {
           </p>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             icon={<Bank className="h-4 w-4" weight="bold" aria-hidden />}
             label="Contas bancárias"
@@ -236,6 +277,7 @@ export function HomePage() {
             loading={loading}
             tone={cash < 0 ? 'negative' : 'positive'}
             empty="Nenhuma conta"
+            onSelect={(id) => setDetail({ type: 'account', id })}
             items={accounts.map((item) => ({
               id: item.id,
               name: item.name,
@@ -254,23 +296,18 @@ export function HomePage() {
             loading={loading}
             tone="negative"
             empty="Nenhum cartão"
-            bar={cards.length > 0 ? usedPct : undefined}
-            hint={
-              cards.length > 0
-                ? `${usedPct}% utilizado`
-                : undefined
-            }
-            hintRight={
-              cards.length > 0 ? `Limite: ${formatBRL(cardLimit)}` : undefined
-            }
+            bar={cardLimit > 0 ? usedPct : undefined}
+            hint={cardLimit > 0 ? `${usedPct}% utilizado` : undefined}
+            hintRight={cardLimit > 0 ? `Limite: ${formatBRL(cardLimit)}` : undefined}
+            onSelect={(id) => setDetail({ type: 'card', id })}
             items={cards.map((item) => ({
               id: item.id,
               name: item.name,
               detail:
-                item.origin === 'open_finance'
-                  ? `${item.institution ?? 'Open Finance'} · OF`
-                  : item.invoices && item.invoices.length > 1
-                    ? `${item.invoices.length} faturas`
+                item.invoices && item.invoices.length > 1
+                  ? `${item.invoices.length} faturas`
+                  : item.origin === 'open_finance'
+                    ? `${item.institution ?? 'Open Finance'} · OF`
                     : item.institution,
               value: formatBRL(
                 item.invoices?.find((row) => row.month === month)?.amount ??
@@ -280,18 +317,40 @@ export function HomePage() {
           />
           <KpiCard
             icon={<Handshake className="h-4 w-4" weight="bold" aria-hidden />}
-            label="Empréstimos"
+            label="Empréstimos e boletos"
             value={formatBRL(owed)}
             loading={loading}
             tone="neutral"
             empty="Nenhum empréstimo"
+            onSelect={(id) => setDetail({ type: 'debt', id })}
             items={debts.map((item) => ({
               id: item.id,
               name: item.creditor,
-              detail: item.installmentCount
-                ? `${item.installmentCount}x ${formatBRL(item.installmentAmount)}`
-                : null,
+              detail: item.kind === 'bill'
+                ? `Boleto · ${item.installmentCount ?? 0}x ${formatBRL(item.installmentAmount)}`
+                : item.installmentCount
+                  ? `${item.installmentCount}x ${formatBRL(item.installmentAmount)}`
+                  : null,
               value: formatBRL(item.remainingBalance),
+            }))}
+          />
+          <KpiCard
+            icon={<ChartLineUp className="h-4 w-4" weight="bold" aria-hidden />}
+            label="Investimentos"
+            value={formatBRL(invested)}
+            loading={loading}
+            tone="positive"
+            empty="Nenhum investimento"
+            onSelect={(id) => setDetail({ type: 'investment', id })}
+            items={investments.map((item) => ({
+              id: item.id,
+              name: item.name,
+              detail:
+                item.origin === 'open_finance'
+                  ? `${item.institution ?? 'Open Finance'} · OF`
+                  : item.institution,
+              value: formatBRL(item.currentValue),
+              amount: item.currentValue,
             }))}
           />
         </section>
@@ -301,6 +360,11 @@ export function HomePage() {
           hasRealData={hasRealData}
           transactions={transactions}
         />
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <ProjectionsPanel board={projections} loading={loading} />
+          <FinanceChat />
+        </section>
 
         <section className="rounded-2xl border border-white/10 bg-[#0b100e] p-5 sm:p-6">
           <h2 className="font-display text-sm font-bold tracking-[0.14em] uppercase">
@@ -319,16 +383,21 @@ export function HomePage() {
             <ul className="mt-5 divide-y divide-white/8">
               {transactions.slice(0, 40).map((item) => {
                 const inflow = item.type === 'income';
+                const tag = historySourceTag(item, accounts, cards);
                 return (
                   <li
                     key={item.id}
                     className="flex items-center justify-between gap-4 py-3 text-sm"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate">{item.description}</span>
-                      <span className="block text-[11px] text-muted-fg">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="inline-flex shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] tracking-wide text-primary uppercase">
+                          {tag}
+                        </span>
+                        <span className="truncate">{item.description}</span>
+                      </span>
+                      <span className="mt-1 block text-[11px] text-muted-fg">
                         {formatDate(item.date)}
-                        {item.source === 'open_finance' ? ' · Open Finance' : ''}
                       </span>
                     </span>
                     <span
@@ -360,6 +429,15 @@ export function HomePage() {
         onClose={() => setAddOpen(false)}
         onSubmit={onSubmit}
       />
+      <ItemDetailDialog
+        target={detail}
+        accounts={accounts}
+        cards={cards}
+        debts={debts}
+        investments={investments}
+        transactions={transactions}
+        onClose={() => setDetail(null)}
+      />
     </div>
   );
 }
@@ -375,6 +453,7 @@ function KpiCard({
   items,
   empty,
   loading,
+  onSelect,
 }: {
   icon: ReactNode;
   label: string;
@@ -392,6 +471,7 @@ function KpiCard({
   }[];
   empty: string;
   loading: boolean;
+  onSelect?: (id: string) => void;
 }) {
   const valueClass =
     tone === 'positive'
@@ -429,7 +509,12 @@ function KpiCard({
       {items.length > 0 ? (
         <ul className="mt-5 space-y-3 border-t border-white/8 pt-4 text-sm">
           {items.map((item) => (
-            <li key={item.id} className="flex items-center justify-between gap-3">
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => onSelect?.(item.id)}
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md text-left transition-colors duration-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
               <span className="min-w-0">
                 <span className="block truncate">{item.name}</span>
                 {item.detail ? (
@@ -447,6 +532,7 @@ function KpiCard({
               >
                 {item.value}
               </span>
+              </button>
             </li>
           ))}
         </ul>

@@ -8,6 +8,7 @@ import {
   CreateAccountDto,
   CreateCardDto,
   CreateDebtDto,
+  CreateInvestmentDto,
   CreateTransactionDto,
   ConnectOpenFinanceDto,
   SyncOpenFinanceDto,
@@ -19,12 +20,17 @@ import {
   CreditCard,
   Debt,
   DEFAULT_CATEGORIES,
+  Investment,
   LedgerTransaction,
+  ProjectionBoard,
+  ProjectionItem,
   TransactionType,
 } from './finance.types';
+import { shortBankLabel } from './labels';
 import {
   PluggyService,
   type PluggyAccount,
+  type PluggyInvestment,
   type PluggyTransaction,
 } from './pluggy.service';
 
@@ -37,6 +43,24 @@ export class FinanceService {
 
   private col(uid: string, name: string) {
     return this.firebase.db.collection(`users/${uid}/${name}`);
+  }
+
+  private pluggyCredentials(input: {
+    clientId?: string;
+    clientSecret?: string;
+  }) {
+    const clientId =
+      input.clientId?.trim() || process.env.PLUGGY_CLIENT_ID?.trim() || '';
+    const clientSecret =
+      input.clientSecret?.trim() ||
+      process.env.PLUGGY_CLIENT_SECRET?.trim() ||
+      '';
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException(
+        'Credenciais Pluggy ausentes. Configure PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET na API.',
+      );
+    }
+    return { clientId, clientSecret };
   }
 
   async seedCategories(uid: string): Promise<Category[]> {
@@ -120,7 +144,14 @@ export class FinanceService {
   async listDebts(uid: string): Promise<Debt[]> {
     const snap = await this.col(uid, 'debts').get();
     return snap.docs
-      .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Debt, 'id'>) }))
+      .map((doc) => {
+        const data = doc.data() as Omit<Debt, 'id'>;
+        return {
+          id: doc.id,
+          ...data,
+          kind: data.kind === 'bill' ? ('bill' as const) : ('loan' as const),
+        };
+      })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
@@ -129,7 +160,8 @@ export class FinanceService {
     const ref = this.col(uid, 'debts').doc();
     const payload: Omit<Debt, 'id'> = {
       creditor: dto.creditor.trim(),
-      principalReceived: dto.principalReceived,
+      kind: dto.kind === 'bill' ? 'bill' : 'loan',
+      principalReceived: dto.principalReceived ?? 0,
       totalToPay: dto.totalToPay,
       installmentCount: dto.installmentCount,
       remainingBalance: dto.totalToPay,
@@ -147,21 +179,47 @@ export class FinanceService {
     return { id: ref.id, ...payload };
   }
 
+  async listInvestments(uid: string): Promise<Investment[]> {
+    const snap = await this.col(uid, 'investments').get();
+    return snap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Investment, 'id'>) }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async createInvestment(uid: string, dto: CreateInvestmentDto): Promise<Investment> {
+    const now = new Date().toISOString();
+    const ref = this.col(uid, 'investments').doc();
+    const payload: Omit<Investment, 'id'> = {
+      name: dto.name.trim(),
+      institution: dto.institution?.trim() || null,
+      kind: dto.kind,
+      currentValue: dto.currentValue,
+      origin: 'manual',
+      externalId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await ref.set(payload);
+    return { id: ref.id, ...payload };
+  }
+
   async connectOpenFinance(uid: string, dto: ConnectOpenFinanceDto) {
+    const { clientId, clientSecret } = this.pluggyCredentials(dto);
+    const itemId = dto.itemId.trim();
     const snapshot = await this.pluggy.fetchSnapshot({
-      clientId: dto.clientId.trim(),
-      clientSecret: dto.clientSecret.trim(),
-      itemId: dto.itemId.trim(),
+      clientId,
+      clientSecret,
+      itemId,
     });
 
     const now = new Date().toISOString();
-    const connectionRef = this.col(uid, 'connections').doc(dto.itemId.trim());
+    const connectionRef = this.col(uid, 'connections').doc(itemId);
     const existing = await connectionRef.get();
     await connectionRef.set(
       {
-        itemId: dto.itemId.trim(),
-        clientId: dto.clientId.trim(),
-        clientSecret: dto.clientSecret.trim(),
+        itemId,
+        clientId,
+        clientSecret,
         connectorName: snapshot.connectorName,
         itemStatus: snapshot.itemStatus,
         status: snapshot.accounts.length > 0 ? 'ok' : 'empty',
@@ -176,6 +234,7 @@ export class FinanceService {
 
     let accounts = 0;
     let cards = 0;
+    let investments = 0;
     const localByExternal = new Map<
       string,
       { kind: 'account' | 'card'; id: string }
@@ -201,6 +260,10 @@ export class FinanceService {
         accounts += 1;
       }
     }
+    for (const remote of snapshot.investments) {
+      await this.upsertPluggyInvestment(uid, remote, snapshot.connectorName, now);
+      investments += 1;
+    }
 
     let transactions = 0;
     for (const remote of snapshot.transactions) {
@@ -219,6 +282,7 @@ export class FinanceService {
       itemStatus: snapshot.itemStatus,
       accounts,
       cards,
+      investments,
       transactions,
     };
   }
@@ -270,7 +334,7 @@ export class FinanceService {
         itemId?: string;
         connectorName?: string;
       };
-      if (!data.clientId || !data.clientSecret || !data.itemId) {
+      if (!data.itemId) {
         continue;
       }
       const result = await this.connectOpenFinance(uid, {
@@ -372,6 +436,46 @@ export class FinanceService {
       dueDay: payload.dueDay,
       currentInvoice: payload.currentInvoice,
       invoices: payload.invoices,
+      origin: 'open_finance',
+      externalId: remote.id,
+      updatedAt: now,
+      createdAt: previous.createdAt ?? now,
+    });
+    return snap.id;
+  }
+
+  private async upsertPluggyInvestment(
+    uid: string,
+    remote: PluggyInvestment,
+    institution: string,
+    now: string,
+  ): Promise<string> {
+    const existing = await this.col(uid, 'investments')
+      .where('externalId', '==', remote.id)
+      .limit(1)
+      .get();
+    const payload: Omit<Investment, 'id'> = {
+      name: remote.name?.trim() || remote.code?.trim() || 'Investimento',
+      institution,
+      kind: mapInvestmentKind(remote.type),
+      currentValue: Number(remote.balance ?? remote.value ?? remote.amount ?? 0),
+      origin: 'open_finance',
+      externalId: remote.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (existing.empty) {
+      const ref = this.col(uid, 'investments').doc();
+      await ref.set(payload);
+      return ref.id;
+    }
+    const snap = existing.docs[0];
+    const previous = snap.data() as Omit<Investment, 'id'>;
+    await snap.ref.update({
+      name: payload.name,
+      institution: payload.institution,
+      kind: payload.kind,
+      currentValue: payload.currentValue,
       origin: 'open_finance',
       externalId: remote.id,
       updatedAt: now,
@@ -527,7 +631,7 @@ export class FinanceService {
     ]);
 
     const cash = accounts.reduce((sum, item) => sum + item.currentBalance, 0);
-    const month = new Date().toISOString().slice(0, 7);
+    const month = saoPauloToday().slice(0, 7);
 
     const paidCardThisMonth = new Set(
       transactions
@@ -556,6 +660,114 @@ export class FinanceService {
       openInstallments,
       available,
       asOf: new Date().toISOString(),
+    };
+  }
+
+  async listProjections(uid: string): Promise<ProjectionBoard> {
+    const [cards, debts, transactions] = await Promise.all([
+      this.listCards(uid),
+      this.listDebts(uid),
+      this.listTransactions(uid),
+    ]);
+    return buildProjectionBoard(cards, debts, transactions);
+  }
+
+  async advisorContext(uid: string) {
+    const [accounts, cards, debts, investments, transactions] = await Promise.all([
+      this.listAccounts(uid),
+      this.listCards(uid),
+      this.listDebts(uid),
+      this.listInvestments(uid),
+      this.listTransactions(uid),
+    ]);
+    const projections = buildProjectionBoard(cards, debts, transactions);
+    const cash = roundMoney(
+      accounts.reduce((sum, item) => sum + item.currentBalance, 0),
+    );
+    return {
+      hoje: projections.asOf,
+      disponivelSeguro: roundMoney(
+        cash - projections.items.reduce((sum, item) => sum + item.amount, 0),
+      ),
+      caixa: cash,
+      investimentos: roundMoney(
+        investments.reduce((sum, item) => sum + item.currentValue, 0),
+      ),
+      faturasAbertas: roundMoney(
+        projections.items
+          .filter((item) => item.kind === 'card')
+          .reduce((sum, item) => sum + item.amount, 0),
+      ),
+      parcelasAbertas: roundMoney(
+        projections.items
+          .filter((item) => item.kind === 'debt' || item.kind === 'bill')
+          .reduce((sum, item) => sum + item.amount, 0),
+      ),
+      contas: accounts.map((item) => ({
+        banco: shortBankLabel(item.institution, item.name),
+        nome: item.name,
+        tipo: item.kind,
+        saldo: roundMoney(item.currentBalance),
+      })),
+      cartoes: cards.map((item) => ({
+        banco: shortBankLabel(item.institution, item.name),
+        nome: item.name,
+        fatura: roundMoney(invoiceThisMonth(item)),
+        limite: roundMoney(item.creditLimit),
+        fechaDia: item.closingDay,
+        venceDia: item.dueDay,
+        faturas: item.invoices ?? [],
+      })),
+      emprestimos: debts
+        .filter((item) => item.kind !== 'bill')
+        .map((item) => ({
+          credor: item.creditor,
+          saldo: roundMoney(item.remainingBalance),
+          parcela: roundMoney(item.installmentAmount),
+          venceDia: item.dueDay,
+        })),
+      boletos: debts
+        .filter((item) => item.kind === 'bill')
+        .map((item) => ({
+          nome: item.creditor,
+          saldo: roundMoney(item.remainingBalance),
+          parcela: roundMoney(item.installmentAmount),
+          vezes: item.installmentCount,
+          venceDia: item.dueDay,
+        })),
+      carteira: investments.map((item) => ({
+        nome: item.name,
+        instituicao: item.institution,
+        tipo: item.kind,
+        valor: roundMoney(item.currentValue),
+      })),
+      vencimentos: projections.items.map((item) => ({
+        tipo:
+          item.kind === 'card'
+            ? 'fatura'
+            : item.kind === 'bill'
+              ? 'boleto'
+              : 'emprestimo',
+        nome: item.title,
+        valor: item.amount,
+        venceEm: item.dueDate,
+        atrasado: item.overdue,
+      })),
+      extratoRecente: transactions.slice(0, 35).map((item) => {
+        const account = accounts.find((row) => row.id === item.accountId);
+        const card = cards.find((row) => row.id === item.cardId);
+        return {
+          data: item.date,
+          tipo: item.type,
+          valor: roundMoney(item.amount),
+          descricao: item.description.slice(0, 80),
+          origem: card
+            ? shortBankLabel(card.institution, card.name)
+            : account
+              ? shortBankLabel(account.institution, account.name)
+              : item.source,
+        };
+      }),
     };
   }
 
@@ -606,6 +818,25 @@ function mapAccountKind(subtype?: string | null): AccountKind {
   return 'checking';
 }
 
+function mapInvestmentKind(
+  type?: string | null,
+): Investment['kind'] {
+  const value = (type ?? '').toUpperCase();
+  if (value.includes('CRYPTO') || value.includes('CRIPTO')) {
+    return 'crypto';
+  }
+  if (value.includes('FIXED') || value.includes('CDB') || value.includes('TESOURO')) {
+    return 'fixed';
+  }
+  if (value.includes('FUND') || value.includes('COTA')) {
+    return 'funds';
+  }
+  if (value.includes('EQUITY') || value.includes('STOCK') || value.includes('ACAO')) {
+    return 'stocks';
+  }
+  return 'other';
+}
+
 function dayFrom(iso?: string | null): number {
   const day = Number(iso?.slice(8, 10));
   return day >= 1 && day <= 31 ? day : 10;
@@ -631,8 +862,111 @@ function normalizeInvoices(
 }
 
 function invoiceThisMonth(card: CreditCard): number {
-  const month = new Date().toISOString().slice(0, 7);
+  const month = saoPauloToday().slice(0, 7);
   return card.invoices?.find((item) => item.month === month)?.amount ?? card.currentInvoice;
+}
+
+function buildProjectionBoard(
+  cards: CreditCard[],
+  debts: Debt[],
+  transactions: LedgerTransaction[],
+): ProjectionBoard {
+  const today = saoPauloToday();
+  const month = today.slice(0, 7);
+  const paidCardThisMonth = new Set(
+    transactions
+      .filter((tx) => tx.type === 'card_payment' && tx.date.startsWith(month) && tx.cardId)
+      .map((tx) => tx.cardId as string),
+  );
+  const paidDebtThisMonth = new Set(
+    transactions
+      .filter((tx) => tx.type === 'debt_payment' && tx.date.startsWith(month) && tx.debtId)
+      .map((tx) => tx.debtId as string),
+  );
+
+  const items: ProjectionItem[] = [];
+  for (const card of cards) {
+    const amount = invoiceThisMonth(card);
+    if (!(amount > 0) || paidCardThisMonth.has(card.id)) {
+      continue;
+    }
+    const dueDate = nextDueDate(card.dueDay || 10, today);
+    items.push({
+      id: card.id,
+      kind: 'card',
+      title: shortBankLabel(card.institution, card.name),
+      detail: `Fatura ${card.name}`,
+      amount,
+      dueDate,
+      overdue: dueDate < today,
+    });
+  }
+  for (const debt of debts) {
+    if (
+      !(debt.installmentAmount > 0) ||
+      debt.remainingBalance <= 0 ||
+      paidDebtThisMonth.has(debt.id)
+    ) {
+      continue;
+    }
+    const bill = debt.kind === 'bill';
+    const dueDate = nextDueDate(debt.dueDay || 10, today);
+    items.push({
+      id: debt.id,
+      kind: bill ? 'bill' : 'debt',
+      title: debt.creditor,
+      detail: bill
+        ? `Boleto ${debt.installmentCount}x ${formatMoney(debt.installmentAmount)}`
+        : `Parcela ${formatMoney(debt.installmentAmount)}`,
+      amount: debt.installmentAmount,
+      dueDate,
+      overdue: dueDate < today,
+    });
+  }
+  items.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || b.amount - a.amount);
+  const totalDue = roundMoney(items.reduce((sum, item) => sum + item.amount, 0));
+  const next = items[0];
+  const headline = next
+    ? `Próximo: ${next.title} ${formatMoney(next.amount)} em ${formatDay(next.dueDate)}.`
+    : 'Nenhum vencimento de fatura ou parcela à vista.';
+  return { asOf: today, totalDue, items, headline };
+}
+
+function saoPauloToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function nextDueDate(dueDay: number, today: string): string {
+  const [year, month] = today.split('-').map(Number);
+  const thisMonth = isoDate(year, month, Math.min(dueDay, daysInMonth(year, month)));
+  if (thisMonth >= today) {
+    return thisMonth;
+  }
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  return isoDate(nextYear, nextMonth, Math.min(dueDay, daysInMonth(nextYear, nextMonth)));
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function isoDate(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatDay(iso: string): string {
+  const [, month, day] = iso.split('-');
+  return `${day}/${month}`;
+}
+
+function formatMoney(value: number): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function mapPluggyTransactionType(

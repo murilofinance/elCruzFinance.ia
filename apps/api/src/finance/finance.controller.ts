@@ -5,6 +5,7 @@ import {
   CreateAccountDto,
   CreateCardDto,
   CreateDebtDto,
+  CreateInvestmentDto,
   CreateTransactionDto,
   ConnectOpenFinanceDto,
   SyncOpenFinanceDto,
@@ -51,6 +52,19 @@ export class FinanceController {
   @Post('debts')
   createDebt(@CurrentUser() user: DecodedIdToken, @Body() body: CreateDebtDto) {
     return this.finance.createDebt(user.uid, body);
+  }
+
+  @Get('investments')
+  investments(@CurrentUser() user: DecodedIdToken) {
+    return this.finance.listInvestments(user.uid);
+  }
+
+  @Post('investments')
+  createInvestment(
+    @CurrentUser() user: DecodedIdToken,
+    @Body() body: CreateInvestmentDto,
+  ) {
+    return this.finance.createInvestment(user.uid, body);
   }
 
   @Post('connections')
