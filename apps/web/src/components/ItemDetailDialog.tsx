@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { X } from '@phosphor-icons/react';
+import { useEffect, type ReactNode } from 'react';
+import { Bank, CreditCard as CardIcon, Handshake, TrendUp, X } from '@phosphor-icons/react';
 import {
   formatBRL,
   type Account,
@@ -44,13 +44,18 @@ export function ItemDetailDialog({
     if (!target) {
       return;
     }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
       }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener('keydown', onKey);
+    };
   }, [target, onClose]);
 
   if (!target) {
@@ -68,52 +73,68 @@ export function ItemDetailDialog({
     debt?.creditor ??
     investment?.name ??
     'Detalhe';
+  const kindLabel =
+    target.type === 'card'
+      ? 'Cartão'
+      : target.type === 'account'
+        ? 'Conta'
+        : target.type === 'investment'
+          ? 'Investimento'
+          : debt?.kind === 'bill'
+            ? 'Boleto parcelado'
+            : 'Empréstimo';
+  const Icon =
+    target.type === 'card'
+      ? CardIcon
+      : target.type === 'investment'
+        ? TrendUp
+        : target.type === 'debt'
+          ? Handshake
+          : Bank;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
       <button
         type="button"
-        aria-label="Fechar"
-        className="absolute inset-0 cursor-pointer bg-black/55"
+        aria-label="Fechar detalhe"
+        className="absolute inset-0 cursor-pointer bg-black/60"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="item-detail-title"
-        className="relative z-10 max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-[#0a0f0d] p-5 shadow-xl sm:p-6"
+        className="relative z-10 flex max-h-[min(90dvh,720px)] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-border bg-[#0a0f0d] shadow-xl"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">
-              {target.type === 'card'
-                ? 'Cartão'
-                : target.type === 'account'
-                  ? 'Conta'
-                  : target.type === 'investment'
-                    ? 'Investimento'
-                    : debt?.kind === 'bill'
-                      ? 'Boleto parcelado'
-                      : 'Empréstimo'}
-            </p>
-            <h2 id="item-detail-title" className="font-display mt-1 text-lg font-black">
+        <header className="flex shrink-0 items-start gap-3 border-b border-white/8 px-5 py-4">
+          <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 text-secondary">
+            <Icon className="h-5 w-5" weight="bold" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">{kindLabel}</p>
+            <h2
+              id="item-detail-title"
+              className="mt-1 break-words text-base font-semibold leading-snug text-foreground"
+            >
               {title}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-md border border-border transition-colors duration-200 hover:border-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Fechar"
+            className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border text-foreground transition-colors duration-200 hover:border-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-5 w-5" weight="bold" aria-hidden />
-            <span className="sr-only">Fechar</span>
           </button>
-        </div>
+        </header>
 
-        {card ? <CardDetail card={card} transactions={transactions} /> : null}
-        {account ? <AccountDetail account={account} transactions={transactions} /> : null}
-        {debt ? <DebtDetail debt={debt} /> : null}
-        {investment ? <InvestmentDetail investment={investment} /> : null}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-5">
+          {card ? <CardDetail card={card} transactions={transactions} /> : null}
+          {account ? <AccountDetail account={account} transactions={transactions} /> : null}
+          {debt ? <DebtDetail debt={debt} /> : null}
+          {investment ? <InvestmentDetail investment={investment} /> : null}
+        </div>
       </div>
     </div>
   );
@@ -127,40 +148,41 @@ function CardDetail({
   transactions: LedgerTransaction[];
 }) {
   const invoices = [...(card.invoices ?? [])].sort((a, b) => b.month.localeCompare(a.month));
-  const related = transactions.filter((item) => item.cardId === card.id).slice(0, 8);
+  const related = transactions.filter((item) => item.cardId === card.id).slice(0, 12);
   return (
-    <div className="mt-5 grid gap-4">
-      <p className="text-sm text-muted-fg">
+    <div className="grid gap-5">
+      <Money
+        value={
+          invoices[0]?.amount ?? card.currentInvoice
+        }
+        tone="negative"
+      />
+      <p className="text-sm leading-6 text-muted-fg">
         Fecha dia {card.closingDay} · vence dia {card.dueDay}
         {card.creditLimit > 0 ? ` · limite ${formatBRL(card.creditLimit)}` : ''}
       </p>
-      <ul className="space-y-3 border-t border-white/8 pt-4 text-sm">
+      <Section title="Faturas">
         {invoices.length > 0 ? (
           invoices.map((row) => (
-            <li key={row.month} className="flex items-center justify-between gap-3">
-              <span>{formatMonth(row.month)}</span>
-              <span className="text-destructive">{formatBRL(row.amount)}</span>
-            </li>
+            <Row key={row.month} label={formatMonth(row.month)} amount={row.amount} tone="negative" />
           ))
         ) : (
-          <li className="flex items-center justify-between gap-3">
-            <span>Fatura atual</span>
-            <span className="text-destructive">{formatBRL(card.currentInvoice)}</span>
-          </li>
+          <Row label="Fatura atual" amount={card.currentInvoice} tone="negative" />
         )}
-      </ul>
+      </Section>
       {related.length > 0 ? (
-        <div>
-          <p className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">Lançamentos</p>
-          <ul className="mt-3 space-y-2 text-sm">
-            {related.map((item) => (
-              <li key={item.id} className="flex justify-between gap-3 text-muted-fg">
-                <span className="truncate">{item.description}</span>
-                <span className="shrink-0">{formatBRL(item.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Section title="Lançamentos">
+          {related.map((item) => (
+            <Row
+              key={item.id}
+              label={item.description}
+              amount={item.amount}
+              tone={item.type === 'income' ? 'positive' : 'negative'}
+              signed
+              income={item.type === 'income'}
+            />
+          ))}
+        </Section>
       ) : null}
     </div>
   );
@@ -173,31 +195,33 @@ function AccountDetail({
   account: Account;
   transactions: LedgerTransaction[];
 }) {
-  const related = transactions.filter((item) => item.accountId === account.id).slice(0, 10);
+  const related = transactions.filter((item) => item.accountId === account.id).slice(0, 12);
   return (
-    <div className="mt-5 grid gap-4">
-      <p className="font-display text-[28px] font-black text-primary">
-        {formatBRL(account.currentBalance)}
-      </p>
-      <p className="text-sm text-muted-fg">
+    <div className="grid gap-5">
+      <Money
+        value={account.currentBalance}
+        tone={account.currentBalance < 0 ? 'negative' : 'positive'}
+      />
+      <p className="text-sm leading-6 break-words text-muted-fg">
         {account.institution ?? 'Conta'}
         {account.origin === 'open_finance' ? ' · Open Finance' : ''}
       </p>
-      <ul className="space-y-3 border-t border-white/8 pt-4 text-sm">
+      <Section title="Lançamentos">
         {related.length > 0 ? (
           related.map((item) => (
-            <li key={item.id} className="flex justify-between gap-3">
-              <span className="min-w-0 truncate">{item.description}</span>
-              <span className={item.type === 'income' ? 'text-primary' : 'text-destructive'}>
-                {item.type === 'income' ? '+' : '−'}
-                {formatBRL(item.amount)}
-              </span>
-            </li>
+            <Row
+              key={item.id}
+              label={item.description}
+              amount={item.amount}
+              tone={item.type === 'income' ? 'positive' : 'negative'}
+              signed
+              income={item.type === 'income'}
+            />
           ))
         ) : (
-          <li className="text-muted-fg">Nenhum lançamento nesta conta ainda.</li>
+          <p className="text-sm text-muted-fg">Nenhum lançamento nesta conta ainda.</p>
         )}
-      </ul>
+      </Section>
     </div>
   );
 }
@@ -219,40 +243,101 @@ function DebtDetail({ debt }: { debt: Debt }) {
   const schedule = upcomingDues(debt.dueDay || 10, remaining);
   const bill = debt.kind === 'bill';
   return (
-    <div className="mt-5 grid gap-4">
-      <p className="font-display text-[28px] font-black">
-        {formatBRL(debt.remainingBalance)}
-      </p>
-      <p className="text-sm text-muted-fg">
+    <div className="grid gap-5">
+      <Money value={debt.remainingBalance} tone="neutral" />
+      <p className="text-sm leading-6 text-muted-fg">
         {bill ? 'Boleto parcelado' : 'Empréstimo'} · {count}x de{' '}
         {formatBRL(debt.installmentAmount)} · vence todo dia {debt.dueDay}
       </p>
-      <ul className="space-y-3 border-t border-white/8 pt-4 text-sm">
+      <Section title="Parcelas">
         {schedule.map((iso, index) => (
-          <li key={iso} className="flex items-center justify-between gap-3">
-            <span>
-              Parcela {index + 1} · {formatDay(iso)}
-            </span>
-            <span className="text-destructive">{formatBRL(debt.installmentAmount)}</span>
-          </li>
+          <Row
+            key={iso}
+            label={`Parcela ${index + 1} · ${formatDay(iso)}`}
+            amount={debt.installmentAmount}
+            tone="negative"
+          />
         ))}
-      </ul>
+      </Section>
     </div>
   );
 }
 
 function InvestmentDetail({ investment }: { investment: Investment }) {
   return (
-    <div className="mt-5 grid gap-4">
-      <p className="font-display text-[28px] font-black text-primary">
-        {formatBRL(investment.currentValue)}
-      </p>
-      <p className="text-sm text-muted-fg">
+    <div className="grid gap-5">
+      <Money value={investment.currentValue} tone="positive" />
+      <p className="text-sm leading-6 break-words text-muted-fg">
         {INVESTMENT_KIND[investment.kind]}
         {investment.institution ? ` · ${investment.institution}` : ''}
         {investment.origin === 'open_finance' ? ' · Open Finance' : ''}
       </p>
     </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">{title}</h3>
+      <ul className="mt-3 divide-y divide-white/8 border-t border-white/8">{children}</ul>
+    </section>
+  );
+}
+
+function Row({
+  label,
+  amount,
+  tone,
+  signed,
+  income,
+}: {
+  label: string;
+  amount: number;
+  tone: 'positive' | 'negative' | 'neutral';
+  signed?: boolean;
+  income?: boolean;
+}) {
+  const color =
+    tone === 'positive'
+      ? 'text-primary'
+      : tone === 'negative'
+        ? 'text-destructive'
+        : 'text-foreground';
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-3 text-sm">
+      <span className="min-w-0 break-words leading-5 text-foreground">{label}</span>
+      <span className={`shrink-0 whitespace-nowrap tabular-nums ${color}`}>
+        {signed ? (income ? '+' : '−') : null}
+        {formatBRL(amount)}
+      </span>
+    </li>
+  );
+}
+
+function Money({
+  value,
+  tone,
+}: {
+  value: number;
+  tone: 'positive' | 'negative' | 'neutral';
+}) {
+  const color =
+    tone === 'positive'
+      ? 'text-primary'
+      : tone === 'negative'
+        ? 'text-destructive'
+        : 'text-foreground';
+  return (
+    <p className={`text-[28px] font-semibold leading-none tracking-tight tabular-nums ${color}`}>
+      {formatBRL(value)}
+    </p>
   );
 }
 
