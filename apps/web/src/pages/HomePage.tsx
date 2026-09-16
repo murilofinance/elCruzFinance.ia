@@ -234,7 +234,7 @@ export function HomePage() {
             label="Contas bancárias"
             value={formatBRL(cash)}
             loading={loading}
-            tone="positive"
+            tone={cash < 0 ? 'negative' : 'positive'}
             empty="Nenhuma conta"
             items={accounts.map((item) => ({
               id: item.id,
@@ -244,6 +244,7 @@ export function HomePage() {
                   ? `${item.institution ?? 'Open Finance'} · OF`
                   : item.institution,
               value: formatBRL(item.currentBalance),
+              amount: item.currentBalance,
             }))}
           />
           <KpiCard
@@ -382,7 +383,13 @@ function KpiCard({
   hintRight?: string;
   tone: 'positive' | 'negative' | 'neutral';
   bar?: number;
-  items: { id: string; name: string; detail?: string | null; value: string }[];
+  items: {
+    id: string;
+    name: string;
+    detail?: string | null;
+    value: string;
+    amount?: number;
+  }[];
   empty: string;
   loading: boolean;
 }) {
@@ -431,7 +438,15 @@ function KpiCard({
                   </span>
                 ) : null}
               </span>
-              <span className={valueClass}>{item.value}</span>
+              <span
+                className={
+                  typeof item.amount === 'number' && item.amount < 0
+                    ? 'text-destructive'
+                    : valueClass
+                }
+              >
+                {item.value}
+              </span>
             </li>
           ))}
         </ul>
