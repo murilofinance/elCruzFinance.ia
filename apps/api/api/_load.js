@@ -1,6 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 
+function jsonError(res, payload) {
+  if (res.headersSent) {
+    return;
+  }
+  res.statusCode = 500;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(payload));
+}
+
 function loadHandler() {
   const candidates = [
     path.join(__dirname, 'nest', 'main.vercel.js'),
@@ -13,22 +22,34 @@ function loadHandler() {
         continue;
       }
       const mod = require(file);
-      return mod.default || mod;
+      const handler = mod.default || mod;
+      if (typeof handler !== 'function') {
+        throw new Error(`Handler inválido em ${file}: ${typeof handler}`);
+      }
+      return handler;
     } catch (error) {
       lastError = error;
     }
   }
-  return function failed(req, res) {
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(
-      JSON.stringify({
-        ok: false,
-        message: lastError instanceof Error ? lastError.message : 'Nest dist não encontrado',
-        tried: candidates,
-      }),
-    );
+  return function failed(_req, res) {
+    jsonError(res, {
+      ok: false,
+      message:
+        lastError instanceof Error ? lastError.message : 'Nest dist não encontrado',
+      tried: candidates,
+    });
   };
 }
 
-module.exports = loadHandler();
+const nestHandler = loadHandler();
+
+module.exports = async function wrapped(req, res) {
+  try {
+    await nestHandler(req, res);
+  } catch (error) {
+    jsonError(res, {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
