@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "node scripts/vercel.mjs install",
-  "buildCommand": "node scripts/vercel.mjs build",
+  "installCommand": "node \"$(git rev-parse --show-toplevel)/scripts/vercel.mjs\" install",
+  "buildCommand": "node \"$(git rev-parse --show-toplevel)/scripts/vercel.mjs\" build",
   "outputDirectory": "apps/web/dist",
   "functions": {
     "api/index.js": {

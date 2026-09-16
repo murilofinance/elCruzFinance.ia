@@ -173,12 +173,14 @@ Consentimento no app da Nubank dura cerca de 12 meses; você pode revogar em Con
 
 ## 4. Vercel
 
-Na Vercel sobem o **site** (`apps/web/dist`) e a **API NestJS** em `/api`. A home é arquivo estático; só caminhos `/api/...` chamam o Nest. Root Directory deve ser a **raiz do repositório**, não `apps/api`.
+Na Vercel há **dois projetos** no mesmo GitHub:
 
-1. Vercel → Project → Settings → General
-   - Root Directory: vazio (raiz do repositório)
-   - Framework Preset: Other
-2. Settings → Environment Variables (Production), a partir de `apps/api/.env`:
+| Projeto | Root Directory | O que sobe |
+|---|---|---|
+| Site (`el-cruz-finance-ia`) | vazio (raiz do repositório) | Telas em `/` |
+| API (`el-cruz-finance-ia-api`) | `apps/api` | NestJS em `/api/health`, `/api/me` |
+
+1. No projeto da **API**: Settings → General → Root Directory = `apps/api`. Framework: Other. Variáveis de `apps/api/.env`:
 
 ```
 FIREBASE_PROJECT_ID
@@ -193,8 +195,9 @@ GEMINI_API_KEY
 
 `FIREBASE_PRIVATE_KEY` vai entre aspas, com `\n` nas quebras, igual ao `.env` local.
 
-3. Firebase Authentication → Settings → Authorized domains → adicionar `el-cruz-finance-ia.vercel.app`.
-4. Depois do deploy, abra `https://el-cruz-finance-ia.vercel.app/api/health`. Deve devolver `ok: true` e `firebase` / `pluggy` conforme as variáveis.
+2. No projeto do **site**: Root Directory vazio.
+3. Firebase Authentication → Authorized domains: domínio do site e da API.
+4. Depois do deploy da API: `https://SEU-PROJETO-API.vercel.app/api/health` deve devolver `ok: true`.
 
 ---
 
