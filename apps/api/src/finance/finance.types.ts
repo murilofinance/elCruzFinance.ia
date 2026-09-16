@@ -95,10 +95,18 @@ export type ProjectionItem = {
   overdue: boolean;
 };
 
+export type ProjectionMonth = {
+  month: string;
+  label: string;
+  total: number;
+  items: ProjectionItem[];
+};
+
 export type ProjectionBoard = {
   asOf: string;
   totalDue: number;
   items: ProjectionItem[];
+  months: ProjectionMonth[];
   headline: string;
 };
 

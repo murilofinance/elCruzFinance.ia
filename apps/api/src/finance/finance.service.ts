@@ -24,6 +24,7 @@ import {
   LedgerTransaction,
   ProjectionBoard,
   ProjectionItem,
+  ProjectionMonth,
   TransactionType,
 } from './finance.types';
 import { shortBankLabel } from './labels';
@@ -863,7 +864,26 @@ function normalizeInvoices(
 
 function invoiceThisMonth(card: CreditCard): number {
   const month = saoPauloToday().slice(0, 7);
-  return card.invoices?.find((item) => item.month === month)?.amount ?? card.currentInvoice;
+  return invoiceForMonth(card, month).amount;
+}
+
+function invoiceForMonth(
+  card: CreditCard,
+  month: string,
+): { amount: number; estimated: boolean } {
+  const exact = card.invoices?.find((item) => item.month === month);
+  if (exact) {
+    return { amount: exact.amount, estimated: false };
+  }
+  const currentMonth = saoPauloToday().slice(0, 7);
+  if (month === currentMonth) {
+    return { amount: card.currentInvoice, estimated: false };
+  }
+  const latest = [...(card.invoices ?? [])].sort((a, b) =>
+    b.month.localeCompare(a.month),
+  )[0];
+  const amount = latest?.amount ?? card.currentInvoice;
+  return { amount, estimated: true };
 }
 
 function buildProjectionBoard(
@@ -872,64 +892,105 @@ function buildProjectionBoard(
   transactions: LedgerTransaction[],
 ): ProjectionBoard {
   const today = saoPauloToday();
-  const month = today.slice(0, 7);
+  const window = monthWindow(today.slice(0, 7), 4);
+  const currentMonth = today.slice(0, 7);
   const paidCardThisMonth = new Set(
     transactions
-      .filter((tx) => tx.type === 'card_payment' && tx.date.startsWith(month) && tx.cardId)
+      .filter((tx) => tx.type === 'card_payment' && tx.date.startsWith(currentMonth) && tx.cardId)
       .map((tx) => tx.cardId as string),
   );
   const paidDebtThisMonth = new Set(
     transactions
-      .filter((tx) => tx.type === 'debt_payment' && tx.date.startsWith(month) && tx.debtId)
+      .filter((tx) => tx.type === 'debt_payment' && tx.date.startsWith(currentMonth) && tx.debtId)
       .map((tx) => tx.debtId as string),
   );
 
   const items: ProjectionItem[] = [];
-  for (const card of cards) {
-    const amount = invoiceThisMonth(card);
-    if (!(amount > 0) || paidCardThisMonth.has(card.id)) {
-      continue;
+  for (const month of window) {
+    for (const card of cards) {
+      if (month === currentMonth && paidCardThisMonth.has(card.id)) {
+        continue;
+      }
+      const exact = card.invoices?.find((row) => row.month === month);
+      const dueDate = dueInMonth(card.dueDay || 10, month);
+      if (exact) {
+        if (!(exact.amount > 0)) {
+          continue;
+        }
+        items.push({
+          id: `${card.id}-${month}`,
+          kind: 'card',
+          title: shortBankLabel(card.institution, card.name),
+          detail: `Fatura ${card.name}`,
+          amount: exact.amount,
+          dueDate,
+          overdue: dueDate < today,
+        });
+        continue;
+      }
+      const nextDue = nextDueDate(card.dueDay || 10, today);
+      const amount = invoiceThisMonth(card);
+      if (nextDue.startsWith(month) && amount > 0) {
+        items.push({
+          id: `${card.id}-${month}`,
+          kind: 'card',
+          title: shortBankLabel(card.institution, card.name),
+          detail: `Fatura ${card.name}`,
+          amount,
+          dueDate,
+          overdue: dueDate < today,
+        });
+      }
     }
-    const dueDate = nextDueDate(card.dueDay || 10, today);
-    items.push({
-      id: card.id,
-      kind: 'card',
-      title: shortBankLabel(card.institution, card.name),
-      detail: `Fatura ${card.name}`,
-      amount,
-      dueDate,
-      overdue: dueDate < today,
-    });
   }
+
   for (const debt of debts) {
-    if (
-      !(debt.installmentAmount > 0) ||
-      debt.remainingBalance <= 0 ||
-      paidDebtThisMonth.has(debt.id)
-    ) {
+    if (!(debt.installmentAmount > 0) || debt.remainingBalance <= 0) {
       continue;
     }
+    const remaining = Math.max(
+      1,
+      Math.ceil(debt.remainingBalance / debt.installmentAmount),
+    );
+    const startMonth =
+      paidDebtThisMonth.has(debt.id) ? shiftMonth(currentMonth, 1) : currentMonth;
     const bill = debt.kind === 'bill';
-    const dueDate = nextDueDate(debt.dueDay || 10, today);
-    items.push({
-      id: debt.id,
-      kind: bill ? 'bill' : 'debt',
-      title: debt.creditor,
-      detail: bill
-        ? `Boleto ${debt.installmentCount}x ${formatMoney(debt.installmentAmount)}`
-        : `Parcela ${formatMoney(debt.installmentAmount)}`,
-      amount: debt.installmentAmount,
-      dueDate,
-      overdue: dueDate < today,
-    });
+    for (let index = 0; index < remaining; index += 1) {
+      const month = shiftMonth(startMonth, index);
+      if (!window.includes(month)) {
+        continue;
+      }
+      const dueDate = dueInMonth(debt.dueDay || 10, month);
+      items.push({
+        id: `${debt.id}-${month}`,
+        kind: bill ? 'bill' : 'debt',
+        title: debt.creditor,
+        detail: bill
+          ? `Boleto ${index + 1}/${debt.installmentCount}`
+          : `Parcela ${formatMoney(debt.installmentAmount)}`,
+        amount: debt.installmentAmount,
+        dueDate,
+        overdue: dueDate < today,
+      });
+    }
   }
+
   items.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || b.amount - a.amount);
+  const months: ProjectionMonth[] = window.map((month) => {
+    const row = items.filter((item) => item.dueDate.startsWith(month));
+    return {
+      month,
+      label: formatMonthLabel(month),
+      total: roundMoney(row.reduce((sum, item) => sum + item.amount, 0)),
+      items: row,
+    };
+  });
   const totalDue = roundMoney(items.reduce((sum, item) => sum + item.amount, 0));
   const next = items[0];
   const headline = next
     ? `Próximo: ${next.title} ${formatMoney(next.amount)} em ${formatDay(next.dueDate)}.`
     : 'Nenhum vencimento de fatura ou parcela à vista.';
-  return { asOf: today, totalDue, items, headline };
+  return { asOf: today, totalDue, items, months, headline };
 }
 
 function saoPauloToday(): string {
@@ -950,6 +1011,40 @@ function nextDueDate(dueDay: number, today: string): string {
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
   return isoDate(nextYear, nextMonth, Math.min(dueDay, daysInMonth(nextYear, nextMonth)));
+}
+
+function dueInMonth(dueDay: number, month: string): string {
+  const [year, mon] = month.split('-').map(Number);
+  return isoDate(year, mon, Math.min(dueDay, daysInMonth(year, mon)));
+}
+
+function monthWindow(startMonth: string, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => shiftMonth(startMonth, index));
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, mon] = month.split('-').map(Number);
+  const date = new Date(year, mon - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthLabel(month: string): string {
+  const names = [
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ];
+  const [year, mon] = month.split('-').map(Number);
+  return `${names[(mon || 1) - 1]}/${year}`;
 }
 
 function daysInMonth(year: number, month: number): number {

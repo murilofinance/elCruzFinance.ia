@@ -41,6 +41,7 @@ const EMPTY_PROJECTIONS: ProjectionBoard = {
   asOf: new Date().toISOString().slice(0, 10),
   totalDue: 0,
   items: [],
+  months: [],
   headline: 'Nenhum vencimento de fatura ou parcela à vista.',
 };
 
