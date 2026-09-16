@@ -2,15 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "npm install --include=dev",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build && node -e \"require('fs').cpSync('dist','api/nest',{recursive:true})\"",
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "dist/**",
       "maxDuration": 30
     },
     "api/[...path].js": {
-      "includeFiles": "dist/**",
       "maxDuration": 30
     }
   }

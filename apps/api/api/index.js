@@ -1,1 +1,1 @@
-module.exports = require('../dist/main.vercel.js').default;
+module.exports = require('./_load.js');
