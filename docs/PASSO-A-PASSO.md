@@ -171,15 +171,26 @@ Consentimento no app da Nubank dura cerca de 12 meses; você pode revogar em Con
 
 ---
 
-## 4. Vercel (quando for publicar)
+## 4. Vercel
 
-1. Crie conta em [vercel.com](https://vercel.com) com o Gmail novo.
-2. Importe o repositório (GitHub/GitLab ou pasta).
-3. Root do projeto: a pasta `MInhas finanças` (monorepo).
-4. Em **Environment Variables**, copie as mesmas do `apps/api/.env` e `apps/web/.env.local` (as `VITE_*` são públicas no browser; as `FIREBASE_PRIVATE_KEY` e Pluggy são secretas).
-5. Depois do primeiro deploy, volte no Firebase Auth → Authorized domains e cole `*.vercel.app`.
+O site em produção é **estático** (`apps/web/dist`). Só `/api/*` chama o NestJS. Se a home cair em `FUNCTION_INVOCATION_FAILED`, o projeto está tratando a página como function — Root Directory deve ser a **raiz do repositório**, não `apps/api`.
 
-Enquanto desenvolve na sua máquina, **não precisa** da Vercel.
+1. Vercel → Project → Settings → General  
+   - Root Directory: vazio (raiz)  
+   - Framework Preset: Other  
+2. Settings → Environment Variables (Production), a partir de `apps/api/.env`:
+
+```
+FIREBASE_PROJECT_ID
+FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY
+WEB_ORIGIN=https://el-cruz-finance-ia.vercel.app
+```
+
+`FIREBASE_PRIVATE_KEY` vai entre aspas, com `\n` nas quebras, igual ao `.env` local. Sem isso o login do Firebase no browser funciona, mas `GET /api/me` falha.
+
+3. Firebase Authentication → Settings → Authorized domains → adicionar `el-cruz-finance-ia.vercel.app` (e qualquer domínio custom).
+4. Redeploy depois de salvar as variáveis.
 
 ---
 

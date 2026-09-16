@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { SignOut } from '@phosphor-icons/react';
 import { useAuth } from '../auth/AuthProvider';
+import { BrandBackdrop } from '../components/BrandBackdrop';
 import { apiFetch, type MeResponse } from '../lib/api';
 
 export function HomePage() {
@@ -20,7 +22,9 @@ export function HomePage() {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Falha ao falar com a API');
+          setError(
+            err instanceof Error ? err.message : 'Falha ao falar com a API',
+          );
         }
       })
       .finally(() => {
@@ -34,66 +38,69 @@ export function HomePage() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium tracking-wide text-secondary uppercase">
-            Sessão
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">
-            Você está dentro
-          </h1>
-          <p className="mt-2 text-muted-fg">
-            O Firebase autenticou. A API NestJS validou o token e gravou seu
-            perfil no Firestore.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="h-10 cursor-pointer rounded-md border border-border px-4 text-sm font-medium transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Sair
-        </button>
-      </header>
-
-      <section className="rounded-lg border border-border bg-muted p-6">
-        <h2 className="text-sm font-medium text-muted-fg">Conta Firebase</h2>
-        <dl className="mt-4 grid gap-3 font-mono text-sm">
+    <BrandBackdrop scrim="bg-black/75">
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
+        <header className="flex items-start justify-between gap-4">
           <div>
-            <dt className="text-muted-fg">E-mail</dt>
-            <dd>{user?.email ?? '—'}</dd>
+            <p className="font-display text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
+              Sessão
+            </p>
+            <h1 className="font-display mt-2 text-3xl font-black tracking-tight">
+              Você está dentro
+            </h1>
+            <p className="mt-2 text-sm text-muted-fg">
+              O Firebase autenticou. A API valida o token e grava seu perfil no
+              Firestore.
+            </p>
           </div>
-          <div>
-            <dt className="text-muted-fg">uid</dt>
-            <dd className="break-all">{user?.uid}</dd>
-          </div>
-        </dl>
-      </section>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="inline-flex h-11 min-w-11 cursor-pointer items-center gap-2 rounded-md border border-border px-4 text-sm font-medium transition-colors duration-200 hover:border-secondary hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <SignOut className="h-4 w-4" weight="bold" aria-hidden />
+            Sair
+          </button>
+        </header>
 
-      <section className="rounded-lg border border-border bg-muted p-6">
-        <h2 className="text-sm font-medium text-muted-fg">GET /api/me</h2>
-        {loading ? (
-          <p className="mt-4 text-sm text-muted-fg">Falando com a API…</p>
-        ) : error ? (
-          <p role="alert" className="mt-4 text-sm text-destructive">
-            {error}. Confira se a API está rodando (npm run dev:api) e se o arquivo apps/api/.env tem a conta de serviço.
-          </p>
-        ) : me ? (
-          <dl className="mt-4 grid gap-3 font-mono text-sm">
+        <section className="rounded-xl border border-border bg-black/70 p-6 backdrop-blur-md">
+          <h2 className="text-sm font-medium text-muted-fg">Conta Firebase</h2>
+          <dl className="mt-4 grid gap-3 text-sm">
             <div>
-              <dt className="text-muted-fg">Perfil no Firestore</dt>
-              <dd>
-                users/{me.uid}
-              </dd>
+              <dt className="text-muted-fg">E-mail</dt>
+              <dd>{user?.email ?? '—'}</dd>
             </div>
             <div>
-              <dt className="text-muted-fg">Criado em</dt>
-              <dd>{me.createdAt}</dd>
+              <dt className="text-muted-fg">uid</dt>
+              <dd className="break-all">{user?.uid}</dd>
             </div>
           </dl>
-        ) : null}
-      </section>
-    </main>
+        </section>
+
+        <section className="rounded-xl border border-border bg-black/70 p-6 backdrop-blur-md">
+          <h2 className="text-sm font-medium text-muted-fg">GET /api/me</h2>
+          {loading ? (
+            <p className="mt-4 text-sm text-muted-fg">Falando com a API…</p>
+          ) : error ? (
+            <p role="alert" className="mt-4 text-sm text-destructive">
+              {error}. Na Vercel, cadastre FIREBASE_PROJECT_ID,
+              FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY. Em local, rode npm
+              run dev:api.
+            </p>
+          ) : me ? (
+            <dl className="mt-4 grid gap-3 text-sm">
+              <div>
+                <dt className="text-muted-fg">Perfil no Firestore</dt>
+                <dd>users/{me.uid}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-fg">Criado em</dt>
+                <dd>{me.createdAt}</dd>
+              </div>
+            </dl>
+          ) : null}
+        </section>
+      </main>
+    </BrandBackdrop>
   );
 }

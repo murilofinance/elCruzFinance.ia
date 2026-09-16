@@ -1,6 +1,8 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useId, useState } from 'react';
 import { FirebaseError } from 'firebase/app';
+import { CircleNotch, GoogleLogo } from '@phosphor-icons/react';
 import { useAuth } from '../auth/AuthProvider';
+import { BrandBackdrop } from '../components/BrandBackdrop';
 
 function mapAuthError(error: unknown): string {
   if (error instanceof FirebaseError) {
@@ -17,6 +19,8 @@ function mapAuthError(error: unknown): string {
         return 'E-mail inválido.';
       case 'auth/popup-closed-by-user':
         return 'Login com Google cancelado.';
+      case 'auth/unauthorized-domain':
+        return 'Este domínio ainda não está autorizado no Firebase Authentication.';
       default:
         return error.message;
     }
@@ -24,8 +28,12 @@ function mapAuthError(error: unknown): string {
   return 'Não foi possível entrar. Tente de novo.';
 }
 
+const fieldClass =
+  'h-12 rounded-md border border-border bg-black/40 px-3 text-foreground outline-none ring-ring transition-colors duration-200 focus-visible:ring-2';
+
 export function LoginPage() {
   const { signInEmail, signUpEmail, signInGoogle } = useAuth();
+  const errorId = useId();
   const [mode, setMode] = useState<'entrar' | 'criar'>('entrar');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,98 +70,120 @@ export function LoginPage() {
   const busy = status === 'loading';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-16">
-      <p className="text-sm font-medium tracking-wide text-secondary uppercase">
-        Controle pessoal
-      </p>
-      <h1 className="mt-3 text-4xl font-bold tracking-tight text-foreground">
-        Minhas finanças
-      </h1>
-      <p className="mt-3 text-muted-fg">
-        Entre para ver saldo, cartões e dívidas no mesmo lugar.
-      </p>
+    <BrandBackdrop scrim="bg-black/55 lg:bg-black/35">
+      <div className="grid min-h-screen lg:grid-cols-[1.15fr_minmax(0,28rem)]">
+        <div className="hidden lg:block" />
+        <main className="flex items-center px-5 py-10 sm:px-8">
+          <div className="w-full rounded-xl border border-border bg-black/70 p-6 backdrop-blur-md sm:p-8">
+            <p className="font-display text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
+              Acesso seguro
+            </p>
+            <h1 className="font-display mt-3 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+              ElCruz
+              <span className="block text-primary">Finance.AI</span>
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-muted-fg">
+              Entre para ver saldo, cartões e dívidas no mesmo lugar.
+            </p>
 
-      <form
-        onSubmit={onSubmit}
-        className="mt-10 flex flex-col gap-5 rounded-lg border border-border bg-muted p-6"
-        noValidate
-      >
-        <div className="flex flex-col gap-2">
-          <label htmlFor="email" className="text-sm font-medium">
-            E-mail
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="h-11 rounded-md border border-border bg-background px-3 text-foreground outline-none ring-ring focus-visible:ring-2"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label htmlFor="password" className="text-sm font-medium">
-            Senha
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete={
-              mode === 'criar' ? 'new-password' : 'current-password'
-            }
-            required
-            minLength={6}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="h-11 rounded-md border border-border bg-background px-3 text-foreground outline-none ring-ring focus-visible:ring-2"
-          />
-        </div>
+            <form
+              onSubmit={onSubmit}
+              className="mt-8 flex flex-col gap-5"
+              noValidate
+              aria-busy={busy}
+            >
+              <div className="flex flex-col gap-2">
+                <label htmlFor="email" className="text-sm font-medium">
+                  E-mail
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  aria-invalid={status === 'error'}
+                  aria-describedby={message ? errorId : undefined}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="password" className="text-sm font-medium">
+                  Senha
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete={
+                    mode === 'criar' ? 'new-password' : 'current-password'
+                  }
+                  required
+                  minLength={6}
+                  value={password}
+                  aria-invalid={status === 'error'}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className={fieldClass}
+                />
+              </div>
 
-        {message ? (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        ) : null}
+              {message ? (
+                <p id={errorId} role="alert" className="text-sm text-destructive">
+                  {message}
+                </p>
+              ) : null}
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="h-11 cursor-pointer rounded-md bg-primary font-medium text-on-primary transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy
-            ? 'Aguarde…'
-            : mode === 'criar'
-              ? 'Criar conta'
-              : 'Entrar'}
-        </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary font-display text-sm font-bold tracking-wide text-on-primary uppercase transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? (
+                  <>
+                    <CircleNotch
+                      className="h-5 w-5 animate-spin"
+                      weight="bold"
+                      aria-hidden
+                    />
+                    Aguarde
+                  </>
+                ) : mode === 'criar' ? (
+                  'Criar conta'
+                ) : (
+                  'Entrar'
+                )}
+              </button>
 
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onGoogle()}
-          className="h-11 cursor-pointer rounded-md border border-border bg-background font-medium transition-colors duration-200 hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Continuar com Google
-        </button>
-      </form>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onGoogle()}
+                className="flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-black/30 font-medium transition-colors duration-200 hover:border-secondary hover:bg-black/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <GoogleLogo className="h-5 w-5" weight="bold" aria-hidden />
+                Continuar com Google
+              </button>
+            </form>
 
-      <p className="mt-6 text-sm text-muted-fg">
-        {mode === 'criar' ? 'Já tem conta?' : 'Primeiro acesso?'}{' '}
-        <button
-          type="button"
-          className="cursor-pointer font-medium text-secondary underline-offset-4 hover:underline"
-          onClick={() => {
-            setMode(mode === 'criar' ? 'entrar' : 'criar');
-            setMessage(null);
-            setStatus('idle');
-          }}
-        >
-          {mode === 'criar' ? 'Entrar' : 'Criar conta'}
-        </button>
-      </p>
-    </main>
+            <p className="mt-6 text-sm text-muted-fg">
+              {mode === 'criar' ? 'Já tem conta?' : 'Primeiro acesso?'}{' '}
+              <button
+                type="button"
+                className="cursor-pointer font-medium text-secondary underline-offset-4 transition-colors duration-200 hover:text-primary hover:underline"
+                onClick={() => {
+                  setMode(mode === 'criar' ? 'entrar' : 'criar');
+                  setMessage(null);
+                  setStatus('idle');
+                }}
+              >
+                {mode === 'criar' ? 'Entrar' : 'Criar conta'}
+              </button>
+            </p>
+          </div>
+        </main>
+      </div>
+    </BrandBackdrop>
   );
 }

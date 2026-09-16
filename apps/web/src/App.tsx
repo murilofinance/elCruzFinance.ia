@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
+import { SessionLoading } from './components/SessionLoading';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SetupPage } from './pages/SetupPage';
@@ -7,11 +8,7 @@ import { SetupPage } from './pages/SetupPage';
 function Gate() {
   const { user, loading } = useAuth();
   if (loading) {
-    return (
-      <main className="grid min-h-screen place-items-center text-muted-fg">
-        Carregando sessão…
-      </main>
-    );
+    return <SessionLoading />;
   }
   return user ? <HomePage /> : <Navigate to="/login" replace />;
 }
@@ -29,9 +26,7 @@ export function App() {
         path="/login"
         element={
           loading ? (
-            <main className="grid min-h-screen place-items-center text-muted-fg">
-              Carregando sessão…
-            </main>
+            <SessionLoading />
           ) : user ? (
             <Navigate to="/" replace />
           ) : (

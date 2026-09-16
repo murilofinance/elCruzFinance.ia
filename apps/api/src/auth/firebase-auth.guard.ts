@@ -25,6 +25,12 @@ export class FirebaseAuthGuard implements CanActivate {
       return true;
     }
 
+    if (!this.firebase.isReady) {
+      throw new UnauthorizedException(
+        'API sem credenciais Firebase. Configure FIREBASE_* na Vercel.',
+      );
+    }
+
     const request = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
       user?: DecodedIdToken;

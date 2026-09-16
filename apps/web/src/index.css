@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Fira Code", ui-monospace, monospace;
-  --color-primary: #1e40af;
-  --color-on-primary: #ffffff;
-  --color-secondary: #3b82f6;
-  --color-accent: #059669;
-  --color-background: #0f172a;
-  --color-foreground: #f8fafc;
-  --color-muted: #101a34;
-  --color-muted-fg: #94a3b8;
-  --color-border: rgb(255 255 255 / 0.08);
-  --color-destructive: #dc2626;
-  --color-ring: #1e40af;
+  --font-sans: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Orbitron", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: #00e68a;
+  --color-on-primary: #04140c;
+  --color-secondary: #7dffc0;
+  --color-accent: #22ff99;
+  --color-background: #05080d;
+  --color-foreground: #f4fff8;
+  --color-muted: #0a1210;
+  --color-muted-fg: #9fb8ab;
+  --color-border: rgb(34 255 153 / 0.22);
+  --color-destructive: #ff5a5a;
+  --color-ring: #00e68a;
 }
 
 html,
@@ -27,6 +27,10 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 @media (prefers-reduced-motion: reduce) {

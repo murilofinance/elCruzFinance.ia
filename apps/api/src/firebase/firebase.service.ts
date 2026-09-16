@@ -6,11 +6,16 @@ import { Firestore, getFirestore } from 'firebase-admin/firestore';
 
 @Injectable()
 export class FirebaseService implements OnModuleInit {
-  private app!: App;
+  private app: App | undefined;
+  private ready = false;
   auth!: Auth;
   db!: Firestore;
 
   constructor(private readonly config: ConfigService) {}
+
+  get isReady(): boolean {
+    return this.ready;
+  }
 
   onModuleInit(): void {
     const projectId = this.config.get<string>('FIREBASE_PROJECT_ID');
@@ -20,12 +25,12 @@ export class FirebaseService implements OnModuleInit {
       ?.replace(/\\n/g, '\n');
 
     if (!projectId || !clientEmail || !privateKey) {
-      if (process.env.NODE_ENV === 'test') {
-        return;
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(
+          'Firebase Admin sem credenciais. /api/me fica indisponível até definir FIREBASE_* na Vercel.',
+        );
       }
-      throw new Error(
-        'Defina FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY em apps/api/.env. Veja docs/PASSO-A-PASSO.md (seção 2.4).',
-      );
+      return;
     }
 
     this.app =
@@ -35,5 +40,6 @@ export class FirebaseService implements OnModuleInit {
       });
     this.auth = getAuth(this.app);
     this.db = getFirestore(this.app);
+    this.ready = true;
   }
 }
