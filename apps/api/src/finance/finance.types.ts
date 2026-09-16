@@ -59,6 +59,7 @@ export type LedgerTransaction = {
   debtId: string | null;
   toAccountId: string | null;
   categoryId: string | null;
+  externalId: string | null;
   source: 'manual' | 'open_finance' | 'ocr' | 'import';
   status: 'draft' | 'confirmed' | 'ignored';
   createdAt: string;

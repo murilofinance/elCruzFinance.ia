@@ -7,6 +7,7 @@ import {
   CreateDebtDto,
   CreateTransactionDto,
   ConnectOpenFinanceDto,
+  SyncOpenFinanceDto,
 } from './finance.dto';
 import { FinanceService } from './finance.service';
 
@@ -58,6 +59,19 @@ export class FinanceController {
     @Body() body: ConnectOpenFinanceDto,
   ) {
     return this.finance.connectOpenFinance(user.uid, body);
+  }
+
+  @Get('connections')
+  connections(@CurrentUser() user: DecodedIdToken) {
+    return this.finance.listConnections(user.uid);
+  }
+
+  @Post('connections/sync')
+  syncOpenFinance(
+    @CurrentUser() user: DecodedIdToken,
+    @Body() body: SyncOpenFinanceDto = {},
+  ) {
+    return this.finance.syncOpenFinance(user.uid, body);
   }
 
   @Get('transactions')

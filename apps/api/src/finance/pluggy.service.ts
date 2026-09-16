@@ -17,19 +17,34 @@ export type PluggyAccount = {
   } | null;
 };
 
+export type PluggyTransaction = {
+  id: string;
+  accountId: string;
+  description?: string | null;
+  descriptionRaw?: string | null;
+  amount: number;
+  date: string;
+  type?: 'DEBIT' | 'CREDIT' | string;
+  status?: string | null;
+};
+
 type AuthResponse = { apiKey?: string };
 type AccountsResponse = { results?: PluggyAccount[] };
+type TransactionsResponse = {
+  results?: PluggyTransaction[];
+  next?: string | null;
+};
 type ItemResponse = {
   id?: string;
   status?: string;
   connector?: { name?: string | null } | null;
-  error?: { message?: string | null } | null;
 };
 
 export type PluggySnapshot = {
   connectorName: string;
   itemStatus: string;
   accounts: PluggyAccount[];
+  transactions: PluggyTransaction[];
 };
 
 @Injectable()
@@ -48,11 +63,40 @@ export class PluggyService {
       ),
     ]);
 
+    const remoteAccounts = accounts.results ?? [];
+    const dateFrom = daysAgo(90);
+    const transactions: PluggyTransaction[] = [];
+    for (const account of remoteAccounts) {
+      const page = await this.fetchAccountTransactions(apiKey, account.id, dateFrom);
+      transactions.push(...page);
+    }
+
     return {
       connectorName: item.connector?.name?.trim() || 'Open Finance',
       itemStatus: item.status ?? 'UNKNOWN',
-      accounts: accounts.results ?? [],
+      accounts: remoteAccounts,
+      transactions,
     };
+  }
+
+  private async fetchAccountTransactions(
+    apiKey: string,
+    accountId: string,
+    dateFrom: string,
+  ): Promise<PluggyTransaction[]> {
+    const collected: PluggyTransaction[] = [];
+    let path = `/v2/transactions?accountId=${encodeURIComponent(accountId)}&dateFrom=${dateFrom}`;
+    for (let page = 0; page < 3; page += 1) {
+      const payload = await this.request<TransactionsResponse>(path, apiKey);
+      collected.push(...(payload.results ?? []));
+      if (!payload.next) {
+        break;
+      }
+      path = payload.next.startsWith('/v2')
+        ? payload.next
+        : `/v2/transactions${payload.next}`;
+    }
+    return collected;
   }
 
   private async authenticate(clientId: string, clientSecret: string): Promise<string> {
@@ -87,7 +131,7 @@ export class PluggyService {
         method: init.method ?? 'GET',
         headers,
         body: init.body ? JSON.stringify(init.body) : undefined,
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(18_000),
       });
     } catch {
       throw new BadRequestException(
@@ -106,6 +150,12 @@ export class PluggyService {
 
     return payload as T;
   }
+}
+
+function daysAgo(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 function mapPluggyError(

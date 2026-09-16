@@ -76,6 +76,17 @@ export type LedgerTransaction = {
   amount: number;
   date: string;
   description: string;
+  accountId?: string | null;
+  cardId?: string | null;
+  source?: 'manual' | 'open_finance' | 'ocr' | 'import';
+};
+
+export type PluggyConnection = {
+  id: string;
+  itemId: string;
+  connectorName: string;
+  status: string;
+  lastSyncAt: string | null;
 };
 
 export type SafeToSpend = {
@@ -88,9 +99,10 @@ export type SafeToSpend = {
 
 export type PluggyConnectResult = {
   connectorName: string;
-  itemStatus: string;
+  itemStatus?: string;
   accounts: number;
   cards: number;
+  transactions?: number;
 };
 
 export function formatBRL(value: number): string {

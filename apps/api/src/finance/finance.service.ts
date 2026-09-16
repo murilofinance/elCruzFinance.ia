@@ -10,6 +10,7 @@ import {
   CreateDebtDto,
   CreateTransactionDto,
   ConnectOpenFinanceDto,
+  SyncOpenFinanceDto,
 } from './finance.dto';
 import {
   Account,
@@ -19,8 +20,13 @@ import {
   Debt,
   DEFAULT_CATEGORIES,
   LedgerTransaction,
+  TransactionType,
 } from './finance.types';
-import { PluggyService, type PluggyAccount } from './pluggy.service';
+import {
+  PluggyService,
+  type PluggyAccount,
+  type PluggyTransaction,
+} from './pluggy.service';
 
 @Injectable()
 export class FinanceService {
@@ -170,13 +176,41 @@ export class FinanceService {
 
     let accounts = 0;
     let cards = 0;
+    const localByExternal = new Map<
+      string,
+      { kind: 'account' | 'card'; id: string }
+    >();
     for (const remote of snapshot.accounts) {
       if (remote.type === 'CREDIT') {
-        await this.upsertPluggyCard(uid, remote, snapshot.connectorName, now);
+        const id = await this.upsertPluggyCard(
+          uid,
+          remote,
+          snapshot.connectorName,
+          now,
+        );
+        localByExternal.set(remote.id, { kind: 'card', id });
         cards += 1;
       } else {
-        await this.upsertPluggyAccount(uid, remote, snapshot.connectorName, now);
+        const id = await this.upsertPluggyAccount(
+          uid,
+          remote,
+          snapshot.connectorName,
+          now,
+        );
+        localByExternal.set(remote.id, { kind: 'account', id });
         accounts += 1;
+      }
+    }
+
+    let transactions = 0;
+    for (const remote of snapshot.transactions) {
+      const local = localByExternal.get(remote.accountId);
+      if (!local) {
+        continue;
+      }
+      const created = await this.upsertPluggyTransaction(uid, remote, local, now);
+      if (created) {
+        transactions += 1;
       }
     }
 
@@ -185,7 +219,71 @@ export class FinanceService {
       itemStatus: snapshot.itemStatus,
       accounts,
       cards,
+      transactions,
     };
+  }
+
+  async listConnections(uid: string) {
+    const snap = await this.col(uid, 'connections').get();
+    return snap.docs
+      .map((doc) => {
+        const data = doc.data() as {
+          itemId?: string;
+          connectorName?: string;
+          status?: string;
+          lastSyncAt?: string;
+        };
+        return {
+          id: doc.id,
+          itemId: data.itemId ?? doc.id,
+          connectorName: data.connectorName ?? 'Open Finance',
+          status: data.status ?? 'ok',
+          lastSyncAt: data.lastSyncAt ?? null,
+        };
+      })
+      .sort((a, b) => (b.lastSyncAt ?? '').localeCompare(a.lastSyncAt ?? ''));
+  }
+
+  async syncOpenFinance(uid: string, dto: SyncOpenFinanceDto = {}) {
+    const connections = await this.col(uid, 'connections').get();
+    if (connections.empty) {
+      throw new BadRequestException(
+        'Nenhuma conexão Pluggy salva. Adicione pela origem Open Finance.',
+      );
+    }
+    const wanted = dto.itemId?.trim();
+    const targets = connections.docs.filter((doc) =>
+      wanted ? doc.id === wanted || doc.data().itemId === wanted : true,
+    );
+    if (targets.length === 0) {
+      throw new BadRequestException('Essa conexão Pluggy não foi encontrada.');
+    }
+
+    let accounts = 0;
+    let cards = 0;
+    let transactions = 0;
+    let connectorName = 'Open Finance';
+    for (const doc of targets) {
+      const data = doc.data() as {
+        clientId?: string;
+        clientSecret?: string;
+        itemId?: string;
+        connectorName?: string;
+      };
+      if (!data.clientId || !data.clientSecret || !data.itemId) {
+        continue;
+      }
+      const result = await this.connectOpenFinance(uid, {
+        clientId: data.clientId,
+        clientSecret: data.clientSecret,
+        itemId: data.itemId,
+      });
+      accounts += result.accounts;
+      cards += result.cards;
+      transactions += result.transactions;
+      connectorName = result.connectorName;
+    }
+    return { connectorName, accounts, cards, transactions };
   }
 
   private async upsertPluggyAccount(
@@ -193,7 +291,7 @@ export class FinanceService {
     remote: PluggyAccount,
     institution: string,
     now: string,
-  ) {
+  ): Promise<string> {
     const existing = await this.col(uid, 'accounts')
       .where('externalId', '==', remote.id)
       .limit(1)
@@ -210,8 +308,9 @@ export class FinanceService {
       updatedAt: now,
     };
     if (existing.empty) {
-      await this.col(uid, 'accounts').doc().set(payload);
-      return;
+      const ref = this.col(uid, 'accounts').doc();
+      await ref.set(payload);
+      return ref.id;
     }
     const snap = existing.docs[0];
     const previous = snap.data() as Omit<Account, 'id'>;
@@ -225,6 +324,7 @@ export class FinanceService {
       updatedAt: now,
       createdAt: previous.createdAt ?? now,
     });
+    return snap.id;
   }
 
   private async upsertPluggyCard(
@@ -232,7 +332,7 @@ export class FinanceService {
     remote: PluggyAccount,
     institution: string,
     now: string,
-  ) {
+  ): Promise<string> {
     const existing = await this.col(uid, 'cards')
       .where('externalId', '==', remote.id)
       .limit(1)
@@ -258,8 +358,9 @@ export class FinanceService {
       updatedAt: now,
     };
     if (existing.empty) {
-      await this.col(uid, 'cards').doc().set(payload);
-      return;
+      const ref = this.col(uid, 'cards').doc();
+      await ref.set(payload);
+      return ref.id;
     }
     const snap = existing.docs[0];
     const previous = snap.data() as Omit<CreditCard, 'id'>;
@@ -276,6 +377,62 @@ export class FinanceService {
       updatedAt: now,
       createdAt: previous.createdAt ?? now,
     });
+    return snap.id;
+  }
+
+  private async upsertPluggyTransaction(
+    uid: string,
+    remote: PluggyTransaction,
+    local: { kind: 'account' | 'card'; id: string },
+    now: string,
+  ): Promise<boolean> {
+    if (remote.status && remote.status !== 'POSTED') {
+      return false;
+    }
+    const existing = await this.col(uid, 'transactions')
+      .where('externalId', '==', remote.id)
+      .limit(1)
+      .get();
+    const amount = Math.abs(Number(remote.amount) || 0);
+    if (amount <= 0) {
+      return false;
+    }
+    const type = mapPluggyTransactionType(local.kind, remote.type);
+    const payload: Omit<LedgerTransaction, 'id'> = {
+      type,
+      amount,
+      date: (remote.date ?? now).slice(0, 10),
+      description: (
+        remote.description ||
+        remote.descriptionRaw ||
+        'Transação Open Finance'
+      ).trim(),
+      accountId: local.kind === 'account' ? local.id : null,
+      cardId: local.kind === 'card' ? local.id : null,
+      debtId: null,
+      toAccountId: null,
+      categoryId: null,
+      externalId: remote.id,
+      source: 'open_finance',
+      status: 'confirmed',
+      createdAt: now,
+    };
+    if (existing.empty) {
+      await this.col(uid, 'transactions').doc().set(payload);
+      return true;
+    }
+    await existing.docs[0].ref.update({
+      type: payload.type,
+      amount: payload.amount,
+      date: payload.date,
+      description: payload.description,
+      accountId: payload.accountId,
+      cardId: payload.cardId,
+      source: 'open_finance',
+      status: 'confirmed',
+      updatedAt: now,
+    });
+    return false;
   }
 
   async listTransactions(uid: string): Promise<LedgerTransaction[]> {
@@ -286,7 +443,7 @@ export class FinanceService {
         ...(doc.data() as Omit<LedgerTransaction, 'id'>),
       }))
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 50);
+      .slice(0, 120);
   }
 
   async createTransaction(
@@ -352,6 +509,7 @@ export class FinanceService {
       debtId,
       toAccountId,
       categoryId: dto.categoryId ?? null,
+      externalId: null,
       source: 'manual',
       status: 'confirmed',
       createdAt: now,
@@ -475,4 +633,15 @@ function normalizeInvoices(
 function invoiceThisMonth(card: CreditCard): number {
   const month = new Date().toISOString().slice(0, 7);
   return card.invoices?.find((item) => item.month === month)?.amount ?? card.currentInvoice;
+}
+
+function mapPluggyTransactionType(
+  kind: 'account' | 'card',
+  remoteType?: string,
+): TransactionType {
+  const credit = remoteType === 'CREDIT';
+  if (kind === 'card') {
+    return credit ? 'card_payment' : 'expense';
+  }
+  return credit ? 'income' : 'expense';
 }

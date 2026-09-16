@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
+  ArrowsClockwise,
   Bank,
   CreditCard as CardIcon,
   Handshake,
@@ -15,7 +16,9 @@ import {
   type Account,
   type CreditCard,
   type Debt,
+  type LedgerTransaction,
   type PluggyConnectResult,
+  type PluggyConnection,
   type SafeToSpend,
 } from '../lib/api';
 
@@ -35,6 +38,8 @@ export function HomePage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
+  const [connections, setConnections] = useState<PluggyConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [apiDown, setApiDown] = useState(false);
@@ -42,16 +47,21 @@ export function HomePage() {
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
-    const [nextSafe, nextAccounts, nextCards, nextDebts] = await Promise.all([
-      loadOr('/safe-to-spend', ZERO_SAFE),
-      loadOr<Account[]>('/accounts', []),
-      loadOr<CreditCard[]>('/cards', []),
-      loadOr<Debt[]>('/debts', []),
-    ]);
+    const [nextSafe, nextAccounts, nextCards, nextDebts, nextTx, nextConnections] =
+      await Promise.all([
+        loadOr('/safe-to-spend', ZERO_SAFE),
+        loadOr<Account[]>('/accounts', []),
+        loadOr<CreditCard[]>('/cards', []),
+        loadOr<Debt[]>('/debts', []),
+        loadOr<LedgerTransaction[]>('/transactions', []),
+        loadOr<PluggyConnection[]>('/connections', []),
+      ]);
     setSafe(nextSafe);
     setAccounts(nextAccounts);
     setCards(nextCards);
     setDebts(nextDebts);
+    setTransactions(nextTx);
+    setConnections(nextConnections);
   }, []);
 
   useEffect(() => {
@@ -79,6 +89,25 @@ export function HomePage() {
     };
   }, [reload]);
 
+  async function syncPluggy() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<PluggyConnectResult>('/connections/sync', {
+        method: 'POST',
+        body: {},
+      });
+      setNotice(
+        `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões) e ${result.transactions ?? 0} transação(ões).`,
+      );
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível sincronizar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openAdd(next: AddTab = 'conta') {
     setTab(next);
     setError(null);
@@ -101,7 +130,7 @@ export function HomePage() {
       setAddOpen(false);
       if (path === '/connections') {
         setNotice(
-          `${result.connectorName}: ${result.accounts} conta(s) e ${result.cards} cartão(ões) sincronizados.`,
+          `${result.connectorName}: ${result.accounts} conta(s), ${result.cards} cartão(ões) e ${result.transactions ?? 0} transação(ões).`,
         );
       } else {
         setNotice('Item adicionado.');
@@ -145,6 +174,17 @@ export function HomePage() {
             </span>
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            {connections.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => void syncPluggy()}
+                disabled={busy}
+                className="inline-flex h-11 min-w-11 cursor-pointer items-center gap-2 rounded-md border border-white/10 px-4 text-sm font-medium transition-colors duration-200 hover:border-secondary hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowsClockwise className="h-4 w-4" weight="bold" aria-hidden />
+                {busy ? 'Sincronizando…' : 'Sincronizar'}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => openAdd('conta')}
@@ -255,7 +295,55 @@ export function HomePage() {
           />
         </section>
 
-        <BalanceChart cash={cash} hasRealData={hasRealData} />
+        <BalanceChart
+          cash={cash}
+          hasRealData={hasRealData}
+          transactions={transactions}
+        />
+
+        <section className="rounded-2xl border border-white/10 bg-[#0b100e] p-5 sm:p-6">
+          <h2 className="font-display text-sm font-bold tracking-[0.14em] uppercase">
+            Histórico
+          </h2>
+          <p className="mt-1 text-sm text-muted-fg">
+            Extrato dos últimos 90 dias (Open Finance) e lançamentos manuais.
+          </p>
+          {transactions.length === 0 ? (
+            <p className="mt-5 text-sm text-muted-fg">
+              Nenhuma transação ainda. Se a Nubank já está conectada, clique em
+              Sincronizar para puxar o extrato. Outro banco: Adicionar → Conta →
+              Open Finance com o novo itemId.
+            </p>
+          ) : (
+            <ul className="mt-5 divide-y divide-white/8">
+              {transactions.slice(0, 40).map((item) => {
+                const inflow = item.type === 'income';
+                return (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-4 py-3 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">{item.description}</span>
+                      <span className="block text-[11px] text-muted-fg">
+                        {formatDate(item.date)}
+                        {item.source === 'open_finance' ? ' · Open Finance' : ''}
+                      </span>
+                    </span>
+                    <span
+                      className={
+                        inflow ? 'shrink-0 text-primary' : 'shrink-0 text-destructive'
+                      }
+                    >
+                      {inflow ? '+' : '−'}
+                      {formatBRL(item.amount)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </main>
 
       <AddItemDialog
@@ -362,4 +450,12 @@ async function loadOr<T>(path: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+function formatDate(value: string): string {
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) {
+    return value;
+  }
+  return `${day}/${month}/${year}`;
 }

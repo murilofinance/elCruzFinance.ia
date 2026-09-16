@@ -170,3 +170,10 @@ export class ConnectOpenFinanceDto {
   @MaxLength(80)
   itemId!: string;
 }
+
+export class SyncOpenFinanceDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  itemId?: string;
+}

@@ -228,9 +228,9 @@ function AccountForm({
       {openFinance ? (
         <>
           <p className="sm:col-span-2 text-sm leading-6 text-muted-fg">
-            Cole o client_id, client_secret e o itemId da aplicação de
-            Development. O site só envia para a nossa API; o secret não volta na
-            tela.
+            Cole client_id, client_secret e o itemId. Outro banco = outro itemId
+            nesta mesma tela. Conta nova no mesmo banco: use Sincronizar no
+            Overview, sem colar de novo.
           </p>
           <Field label="Client ID">
             <input
