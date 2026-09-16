@@ -1,10 +1,7 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { FinanceService } from '../finance/finance.service';
 import type { AiChatDto } from './ai.dto';
-import { localAdvisorReply, type AdvisorSnapshot } from './ai.local';
+import { localAdvisorReply, fallbackAdvisorReply, type AdvisorSnapshot } from './ai.local';
 
 const MODELS = [
   'gemini-2.5-flash-lite',
@@ -14,12 +11,14 @@ const MODELS = [
 ];
 
 const SYSTEM_PROMPT = `Você é o assistente financeiro do ElCruz Finance.
-Responda sempre em português do Brasil, curto e direto.
-Use SOMENTE os dados JSON do usuário. Não invente saldo, fatura, banco ou data.
-Se o dado não estiver no JSON, diga que não encontrou.
-Valores em reais. Datas em dd/mm.
-Quando fizer sentido, cite o banco (Nubank, Itaú, PicPay) e o dia de vencimento.
-Pode projetar o que vence nos próximos dias com base em vencimentos.
+Responda em português do Brasil, curto e estruturado.
+Use SOMENTE os dados JSON. Não invente saldo, fatura, banco ou data.
+Formato obrigatório:
+- primeira linha: resumo com o total
+- depois seções (Atrasados, Próximos, Faturas)
+- cada item em uma linha começando com "- "
+- valores em R$ 1.234,56 e datas em dd/mm
+Não use asteriscos, não junte tudo em um parágrafo.
 Não oriente crime, golpe ou burlar banco.`;
 
 type GeminiResponse = {
@@ -42,14 +41,12 @@ export class AiService {
       uid,
     )) as AdvisorSnapshot;
     const local = localAdvisorReply(dto.message.trim(), snapshot);
+    if (local) {
+      return { reply: local, model: 'local' };
+    }
     const key = process.env.GEMINI_API_KEY?.trim();
     if (!key) {
-      if (local) {
-        return { reply: local, model: 'local' };
-      }
-      throw new BadRequestException(
-        'IA ainda não configurada. Coloque GEMINI_API_KEY na API (Vercel).',
-      );
+      return { reply: fallbackAdvisorReply(snapshot), model: 'local' };
     }
 
     const contents = [
@@ -74,12 +71,8 @@ export class AiService {
       }
     }
 
-    if (local) {
-      return { reply: local, model: 'local' };
-    }
     return {
-      reply:
-        'O Gemini está ocupado agora. Olhe Próximos pagamentos ao lado, ou tente de novo em instantes.',
+      reply: fallbackAdvisorReply(snapshot),
       model: 'local',
     };
   }

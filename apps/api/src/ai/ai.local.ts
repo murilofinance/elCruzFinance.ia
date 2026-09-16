@@ -5,6 +5,11 @@ export type AdvisorSnapshot = {
   investimentos?: number;
   faturasAbertas: number;
   parcelasAbertas: number;
+  contas?: Array<{
+    banco: string;
+    nome: string;
+    saldo: number;
+  }>;
   cartoes: Array<{
     banco?: string;
     nome: string;
@@ -51,7 +56,11 @@ export function localAdvisorReply(
   if (target && /pagar|vence|venc|preciso|precisar/.test(asked)) {
     return replyForDate(target, data);
   }
-  if (/proximos dias|o que vence|o que eu preciso pagar/.test(asked)) {
+  if (
+    /proximos dias|o que vence|preciso pagar|precisar pagar|o que pagar/.test(
+      asked,
+    )
+  ) {
     return replyUpcoming(data);
   }
   if (/fatura/.test(asked) && /cartao|cartoes/.test(asked)) {
@@ -61,8 +70,12 @@ export function localAdvisorReply(
     return replyBankOutflow(data);
   }
   if (/disponivel|posso gastar|safe/.test(asked)) {
-    return `Disponível seguro agora: ${brl(data.disponivelSeguro)}. Caixa ${brl(data.caixa)}, faturas ${brl(data.faturasAbertas)} e parcelas ${brl(data.parcelasAbertas)}.`;
+    return `Disponível seguro agora: ${brl(data.disponivelSeguro)}.\n- Caixa: ${brl(data.caixa)}\n- Faturas: ${brl(data.faturasAbertas)}\n- Parcelas: ${brl(data.parcelasAbertas)}`;
   }
+  return null;
+}
+
+export function fallbackAdvisorReply(data: AdvisorSnapshot): string {
   return replyUpcoming(data);
 }
 
@@ -83,12 +96,46 @@ function replyUpcoming(data: AdvisorSnapshot): string {
   if (data.vencimentos.length === 0) {
     return 'Não há faturas nem parcelas com vencimento à vista.';
   }
-  const total = data.vencimentos.reduce((sum, item) => sum + item.valor, 0);
-  const lines = data.vencimentos.slice(0, 8).map((item) => {
-    const late = item.atrasado ? ' (atrasado)' : '';
-    return `- ${formatDay(item.venceEm)} · ${item.nome}: ${brl(item.valor)}${late}`;
-  });
-  return `Próximos pagamentos: ${brl(total)}.\n${lines.join('\n')}`;
+  const horizon = shiftDays(data.hoje, 14);
+  const soon = data.vencimentos.filter(
+    (item) => item.atrasado || item.venceEm <= horizon,
+  );
+  const list = soon.length > 0 ? soon : data.vencimentos.slice(0, 8);
+  const late = list.filter((item) => item.atrasado);
+  const next = list.filter((item) => !item.atrasado);
+  const total = list.reduce((sum, item) => sum + item.valor, 0);
+  const blocks: string[] = [`A pagar nos próximos dias: ${brl(total)}.`];
+  if (late.length > 0) {
+    blocks.push('Atrasados:');
+    blocks.push(
+      ...late.map(
+        (item) => `- ${item.nome}: ${brl(item.valor)} (venceu ${formatDay(item.venceEm)})`,
+      ),
+    );
+  }
+  if (next.length > 0) {
+    blocks.push('Próximos:');
+    blocks.push(
+      ...next.map(
+        (item) => `- ${formatDay(item.venceEm)} · ${item.nome}: ${brl(item.valor)}`,
+      ),
+    );
+  }
+  const contas = data.contas ?? [];
+  if (contas.length > 0) {
+    blocks.push('Saldo em contas:');
+    blocks.push(
+      ...contas.map((item) => `- ${item.banco}: ${brl(item.saldo)}`),
+    );
+    blocks.push(`Total em caixa: ${brl(data.caixa)}`);
+  }
+  return blocks.join('\n');
+}
+
+function shiftDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function replyCards(data: AdvisorSnapshot): string {
@@ -99,7 +146,7 @@ function replyCards(data: AdvisorSnapshot): string {
     const due = item.venceDia ? ` · vence dia ${item.venceDia}` : '';
     return `- ${item.banco || item.nome}: ${brl(item.fatura)}${due}`;
   });
-  return `Faturas agora:\n${lines.join('\n')}\nTotal ${brl(data.faturasAbertas)}.`;
+  return `Faturas:\n${lines.join('\n')}\nTotal: ${brl(data.faturasAbertas)}`;
 }
 
 function replyBankOutflow(data: AdvisorSnapshot): string {
@@ -119,7 +166,7 @@ function replyBankOutflow(data: AdvisorSnapshot): string {
     return 'Não achei saídas deste mês no extrato recente.';
   }
   const lines = ranked.map(([bank, amount]) => `- ${bank}: ${brl(amount)}`);
-  return `Saídas deste mês por banco:\n${lines.join('\n')}\nQuem mais saiu: ${ranked[0][0]}.`;
+  return `Saídas deste mês:\n${lines.join('\n')}\nQuem mais saiu: ${ranked[0][0]}`;
 }
 
 function parseAskedDate(message: string, today: string): string | null {
