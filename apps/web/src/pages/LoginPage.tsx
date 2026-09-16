@@ -77,7 +77,14 @@ export function LoginPage() {
       <div className="flex min-h-dvh flex-col">
         <main className="flex flex-1 items-center px-5 py-10 sm:px-8 lg:justify-start lg:pl-[max(1.25rem,6vw)] lg:pr-[42%]">
           <div className="w-full max-w-md rounded-xl border border-border bg-black/75 p-6 backdrop-blur-md sm:p-8">
-            <p className="font-display text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
+            <img
+              src="/brand/mark.png"
+              alt=""
+              width={56}
+              height={56}
+              className="h-14 w-14 rounded-lg"
+            />
+            <p className="font-display mt-4 text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
               Acesso seguro
             </p>
             <h1 className="font-display mt-3 text-3xl font-black tracking-tight text-foreground sm:text-4xl">

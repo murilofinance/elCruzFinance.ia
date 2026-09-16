@@ -42,7 +42,14 @@ export function HomePage() {
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-display text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
+            <img
+              src="/brand/mark.png"
+              alt=""
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-md"
+            />
+            <p className="font-display mt-4 text-[11px] font-bold tracking-[0.28em] text-secondary uppercase">
               Sessão
             </p>
             <h1 className="font-display mt-2 text-3xl font-black tracking-tight">
