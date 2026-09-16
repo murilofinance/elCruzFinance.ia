@@ -1,10 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 
-function jsonError(res, payload) {
+function jsonError(req, res, payload) {
   if (res.headersSent) {
     return;
   }
+  applyCors(req, res);
   res.statusCode = 500;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
@@ -31,8 +32,8 @@ function loadHandler() {
       lastError = error;
     }
   }
-  return function failed(_req, res) {
-    jsonError(res, {
+  return function failed(req, res) {
+    jsonError(req, res, {
       ok: false,
       message:
         lastError instanceof Error ? lastError.message : 'Nest dist não encontrado',
@@ -46,6 +47,8 @@ function applyCors(req, res) {
   if (origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader(
@@ -54,11 +57,19 @@ function applyCors(req, res) {
   );
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Authorization,Content-Type',
+    'Authorization, Content-Type, Accept, X-Requested-With',
   );
+  res.setHeader('Access-Control-Max-Age', '86400');
 }
 
-const nestHandler = loadHandler();
+let nestHandler;
+
+function getNestHandler() {
+  if (!nestHandler) {
+    nestHandler = loadHandler();
+  }
+  return nestHandler;
+}
 
 module.exports = async function wrapped(req, res) {
   applyCors(req, res);
@@ -68,9 +79,9 @@ module.exports = async function wrapped(req, res) {
     return;
   }
   try {
-    await nestHandler(req, res);
+    await getNestHandler()(req, res);
   } catch (error) {
-    jsonError(res, {
+    jsonError(req, res, {
       ok: false,
       message: error instanceof Error ? error.message : String(error),
     });
