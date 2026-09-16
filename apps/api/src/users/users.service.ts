@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
+import { FinanceService } from '../finance/finance.service';
 import { FirebaseService } from '../firebase/firebase.service';
 
 export type UserProfile = {
@@ -12,7 +13,10 @@ export type UserProfile = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly firebase: FirebaseService) {}
+  constructor(
+    private readonly firebase: FirebaseService,
+    private readonly finance: FinanceService,
+  ) {}
 
   async upsertFromToken(user: DecodedIdToken): Promise<UserProfile> {
     const ref = this.firebase.db.doc(`users/${user.uid}`);
@@ -27,6 +31,7 @@ export class UsersService {
     };
 
     await ref.set(payload, { merge: true });
+    await this.finance.seedCategories(user.uid);
     const saved = (await ref.get()).data() as Omit<UserProfile, 'uid'>;
 
     return {
