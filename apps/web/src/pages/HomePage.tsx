@@ -489,6 +489,10 @@ export function HomePage() {
           setDetail(null);
           setAllocate({ source: 'tx', tx });
         }}
+        onSaved={async () => {
+          setNotice('Alteração salva.');
+          await reload();
+        }}
       />
       <AllocatePaymentDialog
         mode={allocate}

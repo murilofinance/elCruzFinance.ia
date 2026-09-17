@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { CurrentUser } from '../auth/current-user.decorator';
 import {
@@ -10,6 +10,11 @@ import {
   CreateTransactionDto,
   ConnectOpenFinanceDto,
   SyncOpenFinanceDto,
+  UpdateAccountDto,
+  UpdateCardDto,
+  UpdateDebtDto,
+  UpdateInvestmentDto,
+  UpdateTransactionDto,
 } from './finance.dto';
 import { FinanceService } from './finance.service';
 
@@ -35,6 +40,15 @@ export class FinanceController {
     return this.finance.createAccount(user.uid, body);
   }
 
+  @Patch('accounts/:id')
+  updateAccount(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: UpdateAccountDto,
+  ) {
+    return this.finance.updateAccount(user.uid, id, body);
+  }
+
   @Get('cards')
   cards(@CurrentUser() user: DecodedIdToken) {
     return this.finance.listCards(user.uid);
@@ -45,6 +59,15 @@ export class FinanceController {
     return this.finance.createCard(user.uid, body);
   }
 
+  @Patch('cards/:id')
+  updateCard(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: UpdateCardDto,
+  ) {
+    return this.finance.updateCard(user.uid, id, body);
+  }
+
   @Get('debts')
   debts(@CurrentUser() user: DecodedIdToken) {
     return this.finance.listDebts(user.uid);
@@ -53,6 +76,15 @@ export class FinanceController {
   @Post('debts')
   createDebt(@CurrentUser() user: DecodedIdToken, @Body() body: CreateDebtDto) {
     return this.finance.createDebt(user.uid, body);
+  }
+
+  @Patch('debts/:id')
+  updateDebt(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: UpdateDebtDto,
+  ) {
+    return this.finance.updateDebt(user.uid, id, body);
   }
 
   @Get('investments')
@@ -66,6 +98,15 @@ export class FinanceController {
     @Body() body: CreateInvestmentDto,
   ) {
     return this.finance.createInvestment(user.uid, body);
+  }
+
+  @Patch('investments/:id')
+  updateInvestment(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: UpdateInvestmentDto,
+  ) {
+    return this.finance.updateInvestment(user.uid, id, body);
   }
 
   @Post('connections')
@@ -109,6 +150,15 @@ export class FinanceController {
     @Body() body: AllocatePaymentDto,
   ) {
     return this.finance.allocatePayment(user.uid, id, body);
+  }
+
+  @Patch('transactions/:id')
+  updateTransaction(
+    @CurrentUser() user: DecodedIdToken,
+    @Param('id') id: string,
+    @Body() body: UpdateTransactionDto,
+  ) {
+    return this.finance.updateTransaction(user.uid, id, body);
   }
 
   @Get('safe-to-spend')

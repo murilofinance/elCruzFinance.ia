@@ -13,6 +13,11 @@ import {
   CreateTransactionDto,
   ConnectOpenFinanceDto,
   SyncOpenFinanceDto,
+  UpdateAccountDto,
+  UpdateCardDto,
+  UpdateDebtDto,
+  UpdateInvestmentDto,
+  UpdateTransactionDto,
 } from './finance.dto';
 import {
   Account,
@@ -110,6 +115,31 @@ export class FinanceService {
     return { id: ref.id, ...payload };
   }
 
+  async updateAccount(
+    uid: string,
+    id: string,
+    dto: UpdateAccountDto,
+  ): Promise<Account> {
+    const current = await this.requireAccount(uid, id);
+    assertManual(current.origin, 'Esta conta');
+    const now = new Date().toISOString();
+    const next: Omit<Account, 'id'> = {
+      ...current,
+      name: dto.name?.trim() || current.name,
+      currentBalance:
+        dto.currentBalance === undefined
+          ? current.currentBalance
+          : roundMoney(dto.currentBalance),
+      updatedAt: now,
+    };
+    await this.col(uid, 'accounts').doc(id).update({
+      name: next.name,
+      currentBalance: next.currentBalance,
+      updatedAt: now,
+    });
+    return { id, ...next };
+  }
+
   async listCards(uid: string): Promise<CreditCard[]> {
     const snap = await this.col(uid, 'cards').get();
     return snap.docs
@@ -141,6 +171,45 @@ export class FinanceService {
     };
     await ref.set(payload);
     return { id: ref.id, ...payload };
+  }
+
+  async updateCard(
+    uid: string,
+    id: string,
+    dto: UpdateCardDto,
+  ): Promise<CreditCard> {
+    const current = await this.requireCard(uid, id);
+    assertManual(current.origin, 'Este cartão');
+    const now = new Date().toISOString();
+    const invoices = dto.invoices
+      ? normalizeInvoices(dto.invoices)
+      : current.invoices ?? [];
+    const month = saoPauloToday().slice(0, 7);
+    const currentInvoice =
+      invoices.find((item) => item.month === month)?.amount ??
+      invoices[0]?.amount ??
+      0;
+    const next: Omit<CreditCard, 'id'> = {
+      ...current,
+      name: dto.name?.trim() || current.name,
+      creditLimit:
+        dto.creditLimit === undefined ? current.creditLimit : roundMoney(dto.creditLimit),
+      closingDay: dto.closingDay ?? current.closingDay,
+      dueDay: dto.dueDay ?? current.dueDay,
+      invoices,
+      currentInvoice: roundMoney(currentInvoice),
+      updatedAt: now,
+    };
+    await this.col(uid, 'cards').doc(id).update({
+      name: next.name,
+      creditLimit: next.creditLimit,
+      closingDay: next.closingDay,
+      dueDay: next.dueDay,
+      invoices: next.invoices,
+      currentInvoice: next.currentInvoice,
+      updatedAt: now,
+    });
+    return { id, ...next };
   }
 
   async listDebts(uid: string): Promise<Debt[]> {
@@ -181,6 +250,35 @@ export class FinanceService {
     return { id: ref.id, ...payload };
   }
 
+  async updateDebt(uid: string, id: string, dto: UpdateDebtDto): Promise<Debt> {
+    const current = await this.requireDebt(uid, id);
+    const now = new Date().toISOString();
+    const next: Omit<Debt, 'id'> = {
+      ...current,
+      creditor: dto.creditor?.trim() || current.creditor,
+      remainingBalance:
+        dto.remainingBalance === undefined
+          ? current.remainingBalance
+          : roundMoney(dto.remainingBalance),
+      installmentAmount:
+        dto.installmentAmount === undefined
+          ? current.installmentAmount
+          : roundMoney(dto.installmentAmount),
+      installmentCount: dto.installmentCount ?? current.installmentCount,
+      dueDay: dto.dueDay ?? current.dueDay,
+      updatedAt: now,
+    };
+    await this.col(uid, 'debts').doc(id).update({
+      creditor: next.creditor,
+      remainingBalance: next.remainingBalance,
+      installmentAmount: next.installmentAmount,
+      installmentCount: next.installmentCount,
+      dueDay: next.dueDay,
+      updatedAt: now,
+    });
+    return { id, ...next };
+  }
+
   async listInvestments(uid: string): Promise<Investment[]> {
     const snap = await this.col(uid, 'investments').get();
     return snap.docs
@@ -203,6 +301,29 @@ export class FinanceService {
     };
     await ref.set(payload);
     return { id: ref.id, ...payload };
+  }
+
+  async updateInvestment(
+    uid: string,
+    id: string,
+    dto: UpdateInvestmentDto,
+  ): Promise<Investment> {
+    const current = await this.requireInvestment(uid, id);
+    assertManual(current.origin, 'Este investimento');
+    const now = new Date().toISOString();
+    const next: Omit<Investment, 'id'> = {
+      ...current,
+      currentValue:
+        dto.currentValue === undefined
+          ? current.currentValue
+          : roundMoney(dto.currentValue),
+      updatedAt: now,
+    };
+    await this.col(uid, 'investments').doc(id).update({
+      currentValue: next.currentValue,
+      updatedAt: now,
+    });
+    return { id, ...next };
   }
 
   async connectOpenFinance(uid: string, dto: ConnectOpenFinanceDto) {
@@ -697,6 +818,30 @@ export class FinanceService {
     return { ...current, type, cardId, debtId, description };
   }
 
+  async updateTransaction(
+    uid: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<LedgerTransaction> {
+    const ref = this.col(uid, 'transactions').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new NotFoundException('Lançamento não encontrado.');
+    }
+    const current = { id: snap.id, ...(snap.data() as Omit<LedgerTransaction, 'id'>) };
+    if (current.source === 'open_finance') {
+      throw new BadRequestException(
+        'Lançamento Open Finance não pode ser editado. Sincronize o banco.',
+      );
+    }
+    const amount = dto.amount === undefined ? current.amount : roundMoney(dto.amount);
+    const date = dto.date ?? current.date;
+    const description = dto.description?.trim() || current.description;
+    const now = new Date().toISOString();
+    await ref.update({ amount, date, description, updatedAt: now });
+    return { ...current, amount, date, description };
+  }
+
   async safeToSpend(uid: string) {
     const [accounts, cards, debts, transactions] = await Promise.all([
       this.listAccounts(uid),
@@ -870,6 +1015,14 @@ export class FinanceService {
     return { id: snap.id, ...(snap.data() as Omit<Debt, 'id'>) };
   }
 
+  private async requireInvestment(uid: string, id: string): Promise<Investment> {
+    const snap = await this.col(uid, 'investments').doc(id).get();
+    if (!snap.exists) {
+      throw new NotFoundException('Investimento não encontrado.');
+    }
+    return { id: snap.id, ...(snap.data() as Omit<Investment, 'id'>) };
+  }
+
   private async bumpAccount(uid: string, accountId: string, delta: number) {
     const current = await this.requireAccount(uid, accountId);
     await this.col(uid, 'accounts').doc(accountId).update({
@@ -894,6 +1047,14 @@ export class FinanceService {
       remainingBalance: Math.max(0, roundMoney(current.remainingBalance + delta)),
       updatedAt: new Date().toISOString(),
     });
+  }
+}
+
+function assertManual(origin: string | undefined, label: string): void {
+  if (origin === 'open_finance') {
+    throw new BadRequestException(
+      `${label} veio do Open Finance. Altere no banco e use Sincronizar.`,
+    );
   }
 }
 

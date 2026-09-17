@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from 'react';
-import { Bank, CreditCard as CardIcon, Handshake, TrendUp, X } from '@phosphor-icons/react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Bank, CreditCard as CardIcon, Handshake, Plus, TrendUp, X } from '@phosphor-icons/react';
 import {
+  apiFetch,
   formatBRL,
   type Account,
   type CreditCard,
@@ -34,6 +35,7 @@ export function ItemDetailDialog({
   onClose,
   onPay,
   onAllocate,
+  onSaved,
 }: {
   target: DetailTarget | null;
   accounts: Account[];
@@ -44,6 +46,7 @@ export function ItemDetailDialog({
   onClose: () => void;
   onPay?: (target: { type: 'card' | 'debt'; id: string }) => void;
   onAllocate?: (tx: LedgerTransaction) => void;
+  onSaved?: () => Promise<void> | void;
 }) {
   useEffect(() => {
     if (!target) {
@@ -144,6 +147,7 @@ export function ItemDetailDialog({
                   ? () => onPay({ type: 'card', id: card.id })
                   : undefined
               }
+              onSaved={onSaved}
             />
           ) : null}
           {account ? (
@@ -151,15 +155,19 @@ export function ItemDetailDialog({
               account={account}
               transactions={transactions}
               onAllocate={onAllocate}
+              onSaved={onSaved}
             />
           ) : null}
           {debt ? (
             <DebtDetail
               debt={debt}
               onPay={onPay ? () => onPay({ type: 'debt', id: debt.id }) : undefined}
+              onSaved={onSaved}
             />
           ) : null}
-          {investment ? <InvestmentDetail investment={investment} /> : null}
+          {investment ? (
+            <InvestmentDetail investment={investment} onSaved={onSaved} />
+          ) : null}
         </div>
       </div>
     </div>
@@ -170,10 +178,12 @@ function CardDetail({
   card,
   transactions,
   onPay,
+  onSaved,
 }: {
   card: CreditCard;
   transactions: LedgerTransaction[];
   onPay?: () => void;
+  onSaved?: () => Promise<void> | void;
 }) {
   const invoices = [...(card.invoices ?? [])].sort((a, b) => b.month.localeCompare(a.month));
   const related = transactions.filter((item) => item.cardId === card.id).slice(0, 12);
@@ -200,17 +210,21 @@ function CardDetail({
           Pagar com Pix do extrato
         </button>
       ) : null}
-      <Section title="Faturas">
-        {invoices.filter((row) => row.amount > 0.009).length > 0 ? (
-          invoices
-            .filter((row) => row.amount > 0.009)
-            .map((row) => (
-            <Row key={row.month} label={formatMonth(row.month)} amount={row.amount} tone="negative" />
-          ))
-        ) : (
-          <Row label="Fatura atual" amount={card.currentInvoice} tone="negative" />
-        )}
-      </Section>
+      {manual ? (
+        <CardEditor key={card.id} card={card} onSaved={onSaved} />
+      ) : (
+        <Section title="Faturas">
+          {invoices.filter((row) => row.amount > 0.009).length > 0 ? (
+            invoices
+              .filter((row) => row.amount > 0.009)
+              .map((row) => (
+                <Row key={row.month} label={formatMonth(row.month)} amount={row.amount} tone="negative" />
+              ))
+          ) : (
+            <Row label="Fatura atual" amount={card.currentInvoice} tone="negative" />
+          )}
+        </Section>
+      )}
       {related.length > 0 ? (
         <Section title="Lançamentos">
           {related.map((item) => (
@@ -229,16 +243,148 @@ function CardDetail({
   );
 }
 
+function CardEditor({
+  card,
+  onSaved,
+}: {
+  card: CreditCard;
+  onSaved?: () => Promise<void> | void;
+}) {
+  const [rows, setRows] = useState(
+    () =>
+      (card.invoices?.length
+        ? card.invoices
+        : [{ month: currentMonthValue(), amount: card.currentInvoice }]
+      ).map((item) => ({ month: item.month, amount: String(item.amount) })),
+  );
+  const [dueDay, setDueDay] = useState(String(card.dueDay));
+  const [closingDay, setClosingDay] = useState(String(card.closingDay));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submitPatch(
+          `/cards/${card.id}`,
+          {
+            dueDay: Number(dueDay),
+            closingDay: Number(closingDay),
+            invoices: rows.map((item) => ({
+              month: item.month,
+              amount: Number(item.amount || 0),
+            })),
+          },
+          onSaved,
+          setError,
+        );
+      }}
+    >
+      <h3 className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">
+        Editar faturas
+      </h3>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Fecha dia">
+          <input
+            type="number"
+            min={1}
+            max={31}
+            value={closingDay}
+            onChange={(event) => setClosingDay(event.target.value)}
+            className={fieldClass}
+          />
+        </Field>
+        <Field label="Vence dia">
+          <input
+            type="number"
+            min={1}
+            max={31}
+            value={dueDay}
+            onChange={(event) => setDueDay(event.target.value)}
+            className={fieldClass}
+          />
+        </Field>
+      </div>
+      {rows.map((row, index) => (
+        <div key={`${row.month}-${index}`} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
+          <Field label="Mês">
+            <input
+              type="month"
+              value={row.month}
+              onChange={(event) =>
+                setRows((list) =>
+                  list.map((item, i) =>
+                    i === index ? { ...item, month: event.target.value } : item,
+                  ),
+                )
+              }
+              className={fieldClass}
+              required
+            />
+          </Field>
+          <Field label="Valor">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={row.amount}
+              onChange={(event) =>
+                setRows((list) =>
+                  list.map((item, i) =>
+                    i === index ? { ...item, amount: event.target.value } : item,
+                  ),
+                )
+              }
+              className={fieldClass}
+              required
+            />
+          </Field>
+          <button
+            type="button"
+            aria-label="Remover fatura"
+            onClick={() => setRows((list) => list.filter((_, i) => i !== index))}
+            className="inline-flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/10 text-muted-fg transition-colors duration-200 hover:border-destructive hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="h-4 w-4" weight="bold" aria-hidden />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() =>
+          setRows((list) => [
+            ...list,
+            { month: currentMonthValue(), amount: '0' },
+          ])
+        }
+        className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-white/10 text-sm text-muted-fg transition-colors duration-200 hover:border-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="h-4 w-4" weight="bold" aria-hidden />
+        Adicionar mês
+      </button>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <SaveButton />
+    </form>
+  );
+}
+
 function AccountDetail({
   account,
   transactions,
   onAllocate,
+  onSaved,
 }: {
   account: Account;
   transactions: LedgerTransaction[];
   onAllocate?: (tx: LedgerTransaction) => void;
+  onSaved?: () => Promise<void> | void;
 }) {
   const related = transactions.filter((item) => item.accountId === account.id).slice(0, 12);
+  const manual = account.origin !== 'open_finance';
   return (
     <div className="grid gap-5">
       <Money
@@ -247,8 +393,9 @@ function AccountDetail({
       />
       <p className="text-sm leading-6 break-words text-muted-fg">
         {account.institution ?? 'Conta'}
-        {account.origin === 'open_finance' ? ' · Open Finance' : ''}
+        {manual ? ' · manual' : ' · Open Finance'}
       </p>
+      {manual ? <AccountEditor key={account.id} account={account} onSaved={onSaved} /> : null}
       <Section title="Lançamentos">
         {related.length > 0 ? (
           related.map((item) => {
@@ -273,7 +420,58 @@ function AccountDetail({
   );
 }
 
-function DebtDetail({ debt, onPay }: { debt: Debt; onPay?: () => void }) {
+function AccountEditor({
+  account,
+  onSaved,
+}: {
+  account: Account;
+  onSaved?: () => Promise<void> | void;
+}) {
+  const [balance, setBalance] = useState(String(account.currentBalance));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submitPatch(
+          `/accounts/${account.id}`,
+          { currentBalance: Number(balance) },
+          onSaved,
+          setError,
+        );
+      }}
+    >
+      <h3 className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">Editar saldo</h3>
+      <Field label="Saldo atual">
+        <input
+          type="number"
+          step="0.01"
+          value={balance}
+          onChange={(event) => setBalance(event.target.value)}
+          className={fieldClass}
+          required
+        />
+      </Field>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <SaveButton />
+    </form>
+  );
+}
+
+function DebtDetail({
+  debt,
+  onPay,
+  onSaved,
+}: {
+  debt: Debt;
+  onPay?: () => void;
+  onSaved?: () => Promise<void> | void;
+}) {
   const count = Math.max(
     1,
     debt.installmentCount ??
@@ -305,6 +503,7 @@ function DebtDetail({ debt, onPay }: { debt: Debt; onPay?: () => void }) {
           Pagar com Pix do extrato
         </button>
       ) : null}
+      <DebtEditor key={debt.id} debt={debt} onSaved={onSaved} />
       <Section title="Parcelas">
         {schedule.map((iso, index) => (
           <Row
@@ -319,17 +518,188 @@ function DebtDetail({ debt, onPay }: { debt: Debt; onPay?: () => void }) {
   );
 }
 
-function InvestmentDetail({ investment }: { investment: Investment }) {
+function DebtEditor({
+  debt,
+  onSaved,
+}: {
+  debt: Debt;
+  onSaved?: () => Promise<void> | void;
+}) {
+  const [remaining, setRemaining] = useState(String(debt.remainingBalance));
+  const [installment, setInstallment] = useState(String(debt.installmentAmount));
+  const [dueDay, setDueDay] = useState(String(debt.dueDay));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submitPatch(
+          `/debts/${debt.id}`,
+          {
+            remainingBalance: Number(remaining),
+            installmentAmount: Number(installment),
+            dueDay: Number(dueDay),
+          },
+          onSaved,
+          setError,
+        );
+      }}
+    >
+      <h3 className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">
+        Editar valor e vencimento
+      </h3>
+      <Field label="Saldo restante">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={remaining}
+          onChange={(event) => setRemaining(event.target.value)}
+          className={fieldClass}
+          required
+        />
+      </Field>
+      <Field label="Valor da parcela">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={installment}
+          onChange={(event) => setInstallment(event.target.value)}
+          className={fieldClass}
+          required
+        />
+      </Field>
+      <Field label="Vence todo dia">
+        <input
+          type="number"
+          min={1}
+          max={31}
+          value={dueDay}
+          onChange={(event) => setDueDay(event.target.value)}
+          className={fieldClass}
+          required
+        />
+      </Field>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <SaveButton />
+    </form>
+  );
+}
+
+function InvestmentDetail({
+  investment,
+  onSaved,
+}: {
+  investment: Investment;
+  onSaved?: () => Promise<void> | void;
+}) {
+  const manual = investment.origin !== 'open_finance';
   return (
     <div className="grid gap-5">
       <Money value={investment.currentValue} tone="positive" />
       <p className="text-sm leading-6 break-words text-muted-fg">
         {INVESTMENT_KIND[investment.kind]}
         {investment.institution ? ` · ${investment.institution}` : ''}
-        {investment.origin === 'open_finance' ? ' · Open Finance' : ''}
+        {manual ? ' · manual' : ' · Open Finance'}
       </p>
+      {manual ? (
+        <InvestmentEditor key={investment.id} investment={investment} onSaved={onSaved} />
+      ) : null}
     </div>
   );
+}
+
+function InvestmentEditor({
+  investment,
+  onSaved,
+}: {
+  investment: Investment;
+  onSaved?: () => Promise<void> | void;
+}) {
+  const [value, setValue] = useState(String(investment.currentValue));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submitPatch(
+          `/investments/${investment.id}`,
+          { currentValue: Number(value) },
+          onSaved,
+          setError,
+        );
+      }}
+    >
+      <h3 className="text-[11px] tracking-[0.14em] text-muted-fg uppercase">Editar valor</h3>
+      <Field label="Valor atual">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          className={fieldClass}
+          required
+        />
+      </Field>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <SaveButton />
+    </form>
+  );
+}
+
+const fieldClass =
+  'h-12 w-full rounded-md border border-border bg-black/40 px-3 text-sm text-foreground outline-none ring-ring focus-visible:ring-2';
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-1.5 text-xs text-muted-fg">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function SaveButton() {
+  return (
+    <button
+      type="submit"
+      className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-md bg-primary text-sm text-on-primary transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      Salvar alterações
+    </button>
+  );
+}
+
+async function submitPatch(
+  path: string,
+  body: Record<string, unknown>,
+  onSaved: (() => Promise<void> | void) | undefined,
+  setError: (message: string | null) => void,
+) {
+  setError(null);
+  try {
+    await apiFetch(path, { method: 'PATCH', body });
+    await onSaved?.();
+  } catch (err: unknown) {
+    setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
+  }
+}
+
+function currentMonthValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function Section({

@@ -121,6 +121,115 @@ export class CreateDebtDto {
   dueDay!: number;
 }
 
+export class UpdateAccountDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  currentBalance?: number;
+}
+
+export class UpdateCardDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  creditLimit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(31)
+  closingDay?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(31)
+  dueDay?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @ValidateNested({ each: true })
+  @Type(() => CardInvoiceMonthDto)
+  invoices?: CardInvoiceMonthDto[];
+}
+
+export class UpdateDebtDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  creditor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  remainingBalance?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  installmentAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(360)
+  installmentCount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(31)
+  dueDay?: number;
+}
+
+export class UpdateInvestmentDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  currentValue?: number;
+}
+
+export class UpdateTransactionDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  amount?: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  description?: string;
+}
+
 export class AllocatePaymentDto {
   @IsOptional()
   @IsString()
