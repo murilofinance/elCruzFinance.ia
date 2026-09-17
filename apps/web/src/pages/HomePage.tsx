@@ -184,7 +184,7 @@ export function HomePage() {
 
   async function confirmAllocate(
     txId: string,
-    body: { cardId?: string; debtId?: string },
+    body: { cardId?: string; debtId?: string; invoiceMonth?: string },
   ) {
     setBusy(true);
     setError(null);

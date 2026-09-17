@@ -795,8 +795,10 @@ export class FinanceService {
           'Cartão Open Finance já atualiza a fatura sozinho. Vincule só cartão manual.',
         );
       }
-      await this.bumpCardInvoice(uid, cardId, -current.amount);
-      label = card.name;
+      await this.bumpCardInvoice(uid, cardId, -current.amount, dto.invoiceMonth);
+      label = dto.invoiceMonth
+        ? `${card.name} ${dto.invoiceMonth.slice(5, 7)}/${dto.invoiceMonth.slice(0, 4)}`
+        : card.name;
     } else if (debtId) {
       const debt = await this.requireDebt(uid, debtId);
       await this.bumpDebt(uid, debtId, -current.amount);
@@ -1031,9 +1033,14 @@ export class FinanceService {
     });
   }
 
-  private async bumpCardInvoice(uid: string, cardId: string, delta: number) {
+  private async bumpCardInvoice(
+    uid: string,
+    cardId: string,
+    delta: number,
+    invoiceMonth?: string,
+  ) {
     const current = await this.requireCard(uid, cardId);
-    const next = applyInvoiceDelta(current, delta);
+    const next = applyInvoiceDelta(current, delta, invoiceMonth);
     await this.col(uid, 'cards').doc(cardId).update({
       currentInvoice: next.currentInvoice,
       invoices: next.invoices,
@@ -1061,24 +1068,34 @@ function assertManual(origin: string | undefined, label: string): void {
 function applyInvoiceDelta(
   card: CreditCard,
   delta: number,
+  invoiceMonth?: string,
 ): { currentInvoice: number; invoices: { month: string; amount: number }[] } {
   const month = saoPauloToday().slice(0, 7);
   const invoices = normalizeInvoices(card.invoices);
   if (delta < 0) {
     const paid = roundMoney(-delta);
-    let left = paid;
-    const exact = invoices.find((row) => Math.abs(row.amount - paid) < 0.05 && row.amount > 0);
-    if (exact) {
-      exact.amount = 0;
-      left = 0;
+    if (invoiceMonth) {
+      const target = invoices.find((row) => row.month === invoiceMonth);
+      if (target) {
+        target.amount = roundMoney(Math.max(0, target.amount - paid));
+      }
     } else {
-      for (const row of invoices) {
-        if (left <= 0) {
-          break;
+      let left = paid;
+      const exact = invoices.find(
+        (row) => Math.abs(row.amount - paid) < 0.05 && row.amount > 0,
+      );
+      if (exact) {
+        exact.amount = 0;
+        left = 0;
+      } else {
+        for (const row of invoices) {
+          if (left <= 0) {
+            break;
+          }
+          const take = Math.min(row.amount, left);
+          row.amount = roundMoney(row.amount - take);
+          left = roundMoney(left - take);
         }
-        const take = Math.min(row.amount, left);
-        row.amount = roundMoney(row.amount - take);
-        left = roundMoney(left - take);
       }
     }
     const current =

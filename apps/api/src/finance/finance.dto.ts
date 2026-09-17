@@ -238,6 +238,11 @@ export class AllocatePaymentDto {
   @IsOptional()
   @IsString()
   debtId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}$/)
+  invoiceMonth?: string;
 }
 
 export class CreateTransactionDto {
